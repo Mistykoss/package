@@ -557,21 +557,33 @@ function hmrAccept(bundle, id) {
 }
 
 },{}],"ait1o":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "getScreen", ()=>getScreen);
 var _three = require("three");
 var _gltfloader = require("three/examples/jsm/loaders/GLTFLoader");
 var _orbitControls = require("three/examples/jsm/controls/OrbitControls");
 var _curveModifier = require("three/examples/jsm/modifiers/CurveModifier");
 var _word = require("./Model/Word"); //wod items [MANAGER]
 var _scene = require("./Model/Scene"); //wod items [MANAGER]
+var _effectComposer = require("three/examples/jsm/postprocessing/EffectComposer");
+var _renderPass = require("three/examples/jsm/postprocessing/RenderPass");
+var _outputPass = require("three/examples/jsm/postprocessing/OutputPass");
+var _gtaopass = require("three/examples/jsm/postprocessing/GTAOPass");
 var _css3Drenderer = require("three/examples/jsm/renderers/CSS3DRenderer");
 var _rgbeloader = require("three/examples/jsm/loaders/RGBELoader");
+//externo
 var _scrollModule = require("./utils/ScrollModule");
 var _tweenJs = require("@tweenjs/tween.js");
+var _flowControl = require("./utils/FlowControl");
+var _lightSource = require("./Model/Scene/LightSource");
+//postprocesing
+let SCREEN_REF = null;
 // Crear una escena
 const scene = new _three.Scene();
 const sceneHtmlFront = new _three.Scene();
 //configurar scroll module
-const SCROLL = new (0, _scrollModule.ScrollModule)();
+//const SCROLL = new ScrollModule();
 // Crear un renderizador
 const renderer = new _three.WebGLRenderer({
     alpha: true
@@ -581,11 +593,13 @@ rendererHtmlFront.domElement.style.position = "absolute";
 rendererHtmlFront.domElement.style.top = 0;
 rendererHtmlFront.domElement.style.zIndex = 0;
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
 rendererHtmlFront.setSize(window.innerWidth, window.innerHeight);
 //max quality
+renderer.setClearColor(0xffffff, 0);
 renderer.outputColorSpace = _three.SRGBColorSpace;
 renderer.toneMapping = _three.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.8;
+renderer.toneMappingExposure = 1.2;
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(rendererHtmlFront.domElement);
 //debig controls
@@ -597,117 +611,326 @@ const orbit = new OrbitControls(
 */ //#region HDR LOADER AND MODEL
 const hdrLoader = new (0, _rgbeloader.RGBELoader)();
 // Ruta del archivo HDR
-const hdrPath = new URL(require("aad66dc5302fe554"));
+const hdrPath = new URL(require("a2acd0dc482a9f8b"));
 //SETUP MODEL
+let CTRL_ANIMATION;
 const loader = new (0, _gltfloader.GLTFLoader)();
-const url = new URL(require("bbf32b7b7267f897"));
+const url = new URL(require("7e837f2749c36727"));
 let mixer = null;
 // Cargar la textura HDR
 hdrLoader.load(hdrPath, (hdrTexture)=>{
     // Generar el mapa de entorno prefiltrado
     hdrTexture.mapping = _three.EquirectangularReflectionMapping;
     scene.environment = hdrTexture;
-    loader.load(url.href, (gltf)=>{
-        const model = gltf.scene;
-        model.animations = gltf.animations;
-        model.clips = [];
-        model.mixer = new _three.AnimationMixer(model);
-        model.camera = model.getObjectByName("Camera");
-        model.target = model.getObjectByName("target");
-        model.camView = model.getObjectByName("camView");
-        model.pageIndex = model.getObjectByName("pageIndex");
-        model.screenPivot = model.getObjectByName("screenPivot");
-        mixer = model.mixer;
-        mixer.screenPivot = model.screenPivot;
-        mixer.screenPivot.visible = false;
-        mixer.screenPivot = model.screenPivot.position;
-        mixer.target = model.target;
-        mixer.camera = model.camera;
-        mixer.manager = {
-            zoom: model.camView,
-            pageIndex: model.pageIndex
-        };
-        mixer.timeScale = 1;
-        mixer.animations = [];
-        mixer.childs = model.children;
-        const cam = (0, _word.CAMERA).getCamera();
-        model.camera.near = cam.near; // Distancia más cercana a la cámara antes de que se corte la vista
-        model.camera.far = cam.far; // Distancia más lejana a la cámara antes de que se corte la vista
-        model.camera.top = cam.top; // Altura de la vista desde la cámara
-        model.camera.bottom = cam.bottom; // Altura opuesta a 'top'
-        model.camera.left = cam.left; // Extremo izquierdo de la vista desde la cámara
-        model.camera.right = cam.right; // Extremo derecho de la vista desde la cámara
-        model.camera.zoom = cam.zoom; // Factor de zoom de la cámara
-        model.camera.updateProjectionMatrix();
-        //RECORRER EL MESH Y APLICAR ESTILO
-        const mainModel = model.getObjectByName("mainModel");
-        mainModel.traverse((mesh)=>{
-            if (mesh.isMesh) {
-                // Llamar a la función para ajustar el material del Mesh
-                mesh.material.roughness = 0.8;
-                mesh.material.metalness = 0.8;
-                console.log(mesh.material);
-            }
-        });
-        //END
-        // Add all animations (for nested models)
-        for(let index = 0; index < model.animations.length; index++){
-            const clip = model.animations[index];
-            model.clips.push(mixer.clipAction(clip));
-        }
-        //activate all clips
-        model.clips.forEach((clip)=>{
-            clip.play();
-        });
-        //agregar modelo
-        scene.add(model);
-        //acceder  todas las animaciones
-        mixer.updateAnimations = (time)=>{
-            //setup current time
-            mixer.setTime(time);
-        };
+//scene.backgroundIntensity = 0.65;
+//scene.backgroundBlurriness = 0.35;
+});
+loader.load(url.href, (gltf)=>{
+    const model = gltf.scene;
+    model.animations = gltf.animations;
+    model.clips = [];
+    model.mixer = new _three.AnimationMixer(model);
+    model.camera = model.getObjectByName("Camera");
+    model.target = model.getObjectByName("target");
+    model.camView = model.getObjectByName("camView");
+    model.pageIndex = model.getObjectByName("pageIndex");
+    model.screenPivot = model.getObjectByName("screenPivot");
+    model.escudo = model.getObjectByName("escudo");
+    model.escudo.visible = false;
+    model.escudo = model.getObjectByName("escudo_copy");
+    model.escudo.visible = false;
+    mixer = model.mixer;
+    mixer.screenPivot = model.screenPivot;
+    mixer.screenPivot.visible = false;
+    mixer.screenPivot = model.screenPivot.position;
+    mixer.target = model.target;
+    mixer.camera = model.camera;
+    mixer.manager = {
+        zoom: model.camView,
+        pageIndex: model.pageIndex
+    };
+    mixer.timeScale = 1;
+    mixer.animations = [];
+    mixer.childs = model.children;
+    mixer.models = [];
+    mixer.models.push(model.getObjectByName("escudo"));
+    mixer.models.push(model.getObjectByName("escudo_copy"));
+    mixer.cameraContianer = new (0, _tweenJs.Group)();
+    //mixer.cameraContianer.add(mixer.camera);
+    // Recorrer la escena para ajustar la intensidad del envMap de los modelos
+    model.traverse((objeto)=>{
+        if (objeto.isMesh) // Verificar si el objeto es un mesh (modelo)
+        objeto.material.envMapIntensity = 0.25; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
     });
+    const cam = (0, _word.CAMERA).getCamera();
+    model.camera.near = cam.near; // Distancia más cercana a la cámara antes de que se corte la vista
+    model.camera.far = cam.far; // Distancia más lejana a la cámara antes de que se corte la vista
+    model.camera.top = cam.top; // Altura de la vista desde la cámara
+    model.camera.bottom = cam.bottom; // Altura opuesta a 'top'
+    model.camera.left = cam.left; // Extremo izquierdo de la vista desde la cámara
+    model.camera.right = cam.right; // Extremo derecho de la vista desde la cámara
+    model.camera.zoom = cam.zoom; // Factor de zoom de la cámara
+    model.camera.updateProjectionMatrix();
+    //RECORRER EL MESH Y APLICAR ESTILO
+    const mainModel = model.getObjectByName("mainModel");
+    mainModel.traverse((mesh)=>{
+        if (mesh.isMesh) {
+            // Llamar a la función para ajustar el material del Mesh
+            mesh.material.metalness = 1;
+            mesh.material.roughness = 0.25;
+        }
+    });
+    //END
+    // Add all animations (for nested models)
+    for(let index = 0; index < model.animations.length; index++){
+        const clip = model.animations[index];
+        model.clips.push(mixer.clipAction(clip));
+    }
+    //activate all clips
+    model.clips.forEach((clip)=>{
+        clip.play();
+    });
+    //agregar modelo
+    scene.add(model);
+    //acceder  todas las animaciones
+    mixer.updateAnimations = (time)=>{
+        //setup current time
+        mixer.setTime(time);
+    };
 });
 //#endregion
-// Crear una luz
-const light = new _three.DirectionalLight("white");
-const lightA = new _three.AmbientLight("white");
-light.intensity = 15;
-lightA.intensity = 15;
-light.position.set(0, 5, 0);
-//scene.add(light);
-//scene.add(lightA);
+const lights = []; // Array para almacenar las luces
+// Crear las luces
+for(let i = 0; i < 15; i++){
+    const light = new _three.PointLight(0xffffff, 50); // Color blanco (0xffffff), intensidad 5, distancia 300
+    lights.push(light); // Agregar la luz al array
+    const lightHelper = new _three.PointLightHelper(light, 0.35); // El segundo parámetro es el tamaño del helper
+    // scene.add(lightHelper);
+    scene.add(light);
+}
+// Ahora lights contiene una lista de 5 luces PointLight con intensidad 5 y distancia 300
+// Crear una luz de tipo "point" (punto)
+const mouseLight = new _three.PointLight(0xfaffd3, 50); // Color amarillo (0xffff00), intensidad 1, distancia 100
+mouseLight.position.set(0, 0, 0); // Posición de la luz en el centro de la escena
+scene.add(mouseLight);
+// Crear un ayudante de luz (light helper) para visualizar la luz
+const lightHelper = new _three.PointLightHelper(mouseLight, 0.35); // El segundo parámetro es el tamaño del helper
+//scene.add(lightHelper);
+// Crear una esfera
+const geometry = new _three.SphereGeometry(1, 32, 32); // Radio, segmentos en ancho, segmentos en altura
+const material = new _three.MeshStandardMaterial({
+    color: 0xffffff
+}); // Color blanco para la esfera
+const sphere = new _three.Mesh(geometry, material);
+//scene.add(sphere);
+//PARTICULAS
+// Shader para el material de las partículas
+const vertexShader = `
+uniform float time; // Tiempo en segundos
+
+void main() {
+    // Ajusta la velocidad y la amplitud del movimiento
+    float speed = 0.15; // Velocidad de la animación
+    float amplitude = 0.1; // Amplitud del movimiento
+
+    // Calcula el desplazamiento vertical y horizontal usando funciones sinusoidales
+    float yOffset = -time * speed + (sin(time) * amplitude);
+    float xOffset = (-time * speed + sin(time + position.z)) * 0.15;
+
+    // Aplica el desplazamiento a la posición original de la partícula
+    vec3 newPosition = position + vec3(xOffset, yOffset, 0.0);
+
+    // Reinicia la posición en el eje y si alcanza el límite
+    if (newPosition.y < -10.0) {
+        newPosition.y = 15.0;
+    }
+
+    // Establece el tamaño de los puntos
+    gl_PointSize = 1.0;
+
+    // Asigna la nueva posición al gl_Position
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+}
+
+
+
+`;
+const fragmentShader = `
+    uniform sampler2D image;
+    void main() {
+      vec4 textureColor = texture2D(image, gl_PointCoord);
+        gl_FragColor = vec4(textureColor.rgb, 1.0);
+    }
+`;
+const pTexture = new URL(require("5575bf68e8d133aa"));
+// Crear un buffer de posiciones para las partículas
+const particleCount = 150;
+const positions = new Float32Array(particleCount * 3);
+// Llenar el buffer con posiciones aleatorias
+for(let i = 0; i < particleCount * 3; i += 3){
+    positions[i] = Math.random() * 20 - 10; // Posición X
+    positions[i + 1] = Math.random() * 20 - 10; // Posición Y
+    positions[i + 2] = Math.random() * 20 - 10; // Posición Z
+}
+// Crear la geometría de las partículas
+const pGeometry = new _three.BufferGeometry();
+pGeometry.setAttribute("position", new _three.BufferAttribute(positions, 3));
+// Crear el material de las partículas con el shader personalizado
+const pMaterial = new _three.ShaderMaterial({
+    uniforms: {
+        image: {
+            value: new _three.TextureLoader().load(pTexture.href)
+        },
+        time: {
+            value: 0.0
+        }
+    },
+    vertexShader: vertexShader,
+    fragmentShader: fragmentShader
+});
+// Crear el sistema de partículas
+const particleSystem = new _three.Points(pGeometry, pMaterial);
+scene.add(particleSystem);
+//END PARTICULAS
 let wasBegin = false;
-let scrollValue = 0;
+let isCurrentAnimCompleted = false;
+let isBeginAnimationCompleted = false;
+let isAnimSetup = false;
+let actualIndex = 2;
+let currentTime = 0;
 let currentScroll = 0;
 let beginAnim = null;
+const FLOW = new (0, _flowControl.FlowControl)(30);
+const clock = new _three.Clock(false);
+let mousePos = new _three.Vector3();
+const timer = new _three.Clock();
+let time = 0;
+let parallaxPos = new _three.Vector3();
+let isVideoPlaying = true;
+let postIsLoaded = false;
+//setup post procesing
+let composer = new (0, _effectComposer.EffectComposer)(renderer);
+let renderPass = null;
+let gtoPass = null;
+let outputPass = null;
+const aoParameters = {
+    radius: 0.25,
+    distanceExponent: 1,
+    thickness: 3,
+    scale: 1.6,
+    samples: 16,
+    distanceFallOff: 1,
+    screenSpaceRadius: false
+};
+const pdParameters = {
+    lumaPhi: 10,
+    depthPhi: 2,
+    normalPhi: 3,
+    radius: 4,
+    radiusExponent: 1,
+    rings: 2,
+    samples: 16
+};
 //#region  ANIMATION LOOP
 const animate = ()=>{
+    //if(isVideoPlaying) return;
+    time = timer.getElapsedTime();
+    pMaterial.uniforms.time.value = time;
     //el modelo esta cargado?
     if (mixer !== null) {
-        SCROLL.updateScroll();
-        scrollValue = currentScroll + SCROLL.value;
+        if (!postIsLoaded) {
+            console.log("POST PROCESADO CARGADO");
+            renderPass = new (0, _renderPass.RenderPass)(scene, mixer.camera);
+            gtoPass = new (0, _gtaopass.GTAOPass)(scene, mixer.camera, window.innerWidth, window.innerHeight);
+            // Asigna los parámetros al GTAOPass
+            gtoPass.updateGtaoMaterial(aoParameters);
+            gtoPass.updatePdMaterial(pdParameters);
+            gtoPass.output = (0, _gtaopass.GTAOPass).OUTPUT.Default;
+            outputPass = new (0, _outputPass.OutputPass)();
+            //add pass
+            composer.addPass(renderPass);
+            composer.addPass(gtoPass);
+            composer.addPass(outputPass);
+            //setup one time
+            postIsLoaded = true;
+        }
         loadScreen();
-        loadBeginAnimations();
-        animModel(scrollValue);
+        const actualPage = -mixer.manager.pageIndex.position.z;
+        mouseLight.position.lerp(mousePos, 0.05);
+        if (!isBeginAnimationCompleted) {
+            loadBeginAnimations();
+            animModel(currentTime);
+            (0, _scene.FRAME)(actualPage);
+        }
+        if ((0, _flowControl.COUNT) >= 30) {
+            if (!isAnimSetup) {
+                clock.start();
+                isAnimSetup = true;
+                console.log("INICIAR");
+            } else {
+                currentTime = currentTime + clock.getElapsedTime() * 0.01;
+                animModel(currentTime);
+                if (actualPage === actualIndex) {
+                    (0, _scene.FRAME)(actualPage);
+                    isCurrentAnimCompleted = true;
+                    clock.stop();
+                    (0, _flowControl.reset)();
+                    actualIndex += 1;
+                    // console.log(actualPage, ">>", actualIndex);
+                    isAnimSetup = false;
+                }
+            }
+        } else ;
+        const center = new _three.Vector3(5, 4, 3); // Vector que define el centro
+        let radius = 5; // Radio de la trayectoria circular
+        let radiusFactor = 2; // Radio de la trayectoria circular
+        const angleIncrement = Math.PI * 2 / lights.length; // Calcula el incremento del ángulo
+        for(let i = 0; i < lights.length; i++){
+            const angle = time * 0.1 + angleIncrement * i; // Suma el ángulo base con el ángulo incremental
+            // Calcula el radio para esta luz en particular
+            const currentRadius = radiusFactor * (i + 1); // Ajusta el radio según el índice y el factor
+            const offsetX = Math.sin(angle) * radius; // Componente x relativa al centro
+            const offsetY = Math.cos(angle) * currentRadius; // Manteniendo una coordenada y común para todas las luces
+            const offsetZ = Math.cos(angle) * radius + (currentRadius - 2); // Componente z relativa al centro
+            // Calcular la posición absoluta sumando las coordenadas relativas al centro
+            const absolutePosition = center.clone().add(new _three.Vector3(offsetX, offsetY, offsetZ));
+            lights[i].position.copy(absolutePosition);
+        }
+        //scrollValue = currentScroll + SCROLL.value;
+        // currentScroll = SCROLL.value;
+        // console.log(currentScroll)
+        //animModel(clock.getElapsedTime() * 0.1);
         updateCamera(mixer);
-        getAnimations();
+        // getAnimations();
         //actualizar tween
         beginAnim.update();
         //renderizar
-        renderer.render(scene, mixer.camera);
-        rendererHtmlFront.render(sceneHtmlFront, mixer.camera);
+        composer.render(scene, mixer.camera);
+    //rendererHtmlFront.render(sceneHtmlFront, mixer.camera);
     }
     requestAnimationFrame(animate);
 };
 animate();
 //#endregion
+function setAnimation(animDuration = 3000, props) {
+    const inicio = {
+        valor: props.currentTime
+    };
+    const fin = {
+        valor: props.finalTime
+    };
+    const tween = new (0, _tweenJs.Tween)(inicio).to(fin, animDuration).easing((0, _tweenJs.Easing).Sinusoidal.Out).onUpdate(()=>{
+        currentTime = inicio.valor;
+    }).start();
+    return tween;
+}
 //#region TEMP AUXILIAR FUNCTIONS
 function loadScreen() {
     //create inSceneELEMENT
     if (!wasBegin) {
         const screenComponent = createComponent("screen-container");
         const modelScreen = addInSceneHtml(screenComponent, mixer.screenPivot);
+        SCREEN_REF = modelScreen;
         sceneHtmlFront.add(modelScreen);
         console.log("SCREEN LISTO");
     }
@@ -721,11 +944,16 @@ function beginAnimation() {
         valor: 0.9
     };
     const tween = new (0, _tweenJs.Tween)(inicio).to(fin, 3000).easing((0, _tweenJs.Easing).Sinusoidal.Out).onUpdate(()=>{
-        currentScroll = inicio.valor;
+        currentTime = inicio.valor;
+    // console.log(currentTime)
+    }).onComplete(()=>{
+        isCurrentAnimCompleted = true;
     }).start();
     tween.onComplete(()=>{
         // Llamada cuando la animación ha finalizado
         console.log("INICIO COMPLETO");
+        const cortains = document.getElementById("cortain");
+        cortains.style.display = "none";
     });
     return tween;
 }
@@ -744,7 +972,8 @@ function loadBeginAnimations() {
     }
 }
 function animModel(scroll) {
-    const value = scroll.value || scroll;
+    const value = scroll;
+    //console.log("scroll>>", value);
     mixer.updateAnimations(value);
     mixer.update(0.1);
 }
@@ -756,7 +985,9 @@ function updateCamera(props) {
 }
 function getAnimations() {
     const actualPage = -mixer.manager.pageIndex.position.z;
-    (0, _scene.FRAME)(actualPage);
+//console.log(actualPage);
+//FRAME(actualPage);
+//UPDATE_PAGE(2)
 }
 //add custom items in scene
 function addInSceneHtml(element, pos) {
@@ -773,14 +1004,103 @@ function createComponent(containerId) {
     const voidContainer = document.createElement("div");
     const container = document.createElement("div");
     container.id = containerId;
-    container.innerText = "screen";
     // Agregar la imagen al contenedor
     voidContainer.appendChild(container);
     // Devolver el contenedor creado
     return voidContainer;
-} //#endregion
+}
+//#endregion
+function getNormalizedMousePosition(event) {
+    // Obtener las dimensiones del viewport
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    // Obtener las coordenadas del mouse en relación con el viewport
+    const mousePositionX = event.clientX;
+    const mousePositionY = event.clientY;
+    // Calcular la posición normalizada en los ejes x e y
+    const normalizedX = mousePositionX / viewportWidth * 2 - 1;
+    const normalizedY = -(mousePositionY / viewportHeight) * 2 + 1;
+    // Devolver la posición normalizada como un objeto
+    return {
+        x: normalizedX,
+        y: normalizedY
+    };
+}
+// Agregar el plano a la escescene.add(plane)
+// Función para obtener la posición del mouse y actualizar el raycaster
+// Crear un raycaster
+let mouseData = new _three.Vector2();
+const raycaster = new _three.Raycaster();
+let intersectObjects = null;
+let timeOut;
+let isPlaying = true;
+//video temp ref
+const SCREEN_VIDEO_CONTAINER = document.getElementById("idle-video-container");
+const idleVideoRef = document.getElementById("idle-video");
+let isScrolling = false;
+function scrolling(event) {
+    isScrolling = true;
+    console.log("scroll");
+    clearTimeout(timeOut); // Reiniciar el temporizador cada vez que se mueve el mouse
+    timeOut = setTimeout(function() {
+        console.log("No scroll");
+        isScrolling = false;
+    }, 1000); // El tiempo
+}
+function updateRaycaster(event) {
+    if (isScrolling) return;
+    clearTimeout(timeOut); // Reiniciar el temporizador cada vez que se mueve el mouse
+    timeOut = setTimeout(function() {
+        console.log("El mouse se ha detenido de moverse", idleVideoRef);
+        isPlaying = true;
+        //cambiar la pantalla al video
+        SCREEN_VIDEO_CONTAINER.classList.add("show");
+        //reproducir vide
+        idleVideoRef.play();
+    // Función a ejecutar cuando el mouse se ha detenido
+    }, 6500); // El tiempo de espera en milisegundos antes de que se ejecute la función (ajústalo según sea necesario)
+    if (isPlaying) {
+        isPlaying = false;
+        SCREEN_VIDEO_CONTAINER.classList.remove("show");
+        setTimeout(()=>{
+            idleVideoRef.pause();
+            idleVideoRef.currentTime = 0;
+        }, 300);
+    }
+    //verificar que el objeto a sido cargado
+    if (mixer.camera != null) {
+        // Obtener las coordenadas del mouse en relación con el viewport
+        mouseData.x = event.clientX / window.innerWidth * 2 - 1;
+        mouseData.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        // Actualizar el raycaster
+        raycaster.setFromCamera(mouseData, mixer.camera);
+        // Intersectar el rayo con los objetos
+        intersectObjects = raycaster.intersectObjects(mixer.models);
+        // Verificar si se detectó alguna intersección
+        if (intersectObjects.length > 0) {
+            // Obtener solo la primera intersección
+            const primeraInterseccion = intersectObjects[0].point;
+            //console.log(primeraInterseccion);
+            mousePos.copy(primeraInterseccion);
+        // Hacer lo que necesites con la primera intersección
+        }
+    }
+}
+// Escuchar eventos de movimiento del mouse y actualizar el raycaster
+document.addEventListener("mousemove", updateRaycaster, false);
+document.addEventListener("wheel", scrolling);
+function volumetricLight() {
+    let light = new (0, _lightSource.LightSource)();
+    light.position.set(-16, 13, 32);
+    sphere.copy(light.position);
+    scene.add(light);
+    scene.add(sphere);
+}
+function getScreen() {
+    return SCREEN_REF;
+}
 
-},{"three":"ktPTu","three/examples/jsm/loaders/GLTFLoader":"dVRsF","three/examples/jsm/controls/OrbitControls":"7mqRv","three/examples/jsm/modifiers/CurveModifier":"iSJKe","./Model/Word":"5NsQR","./Model/Scene":"hmvjl","three/examples/jsm/renderers/CSS3DRenderer":"dWhzi","./utils/ScrollModule":"gBv8W","three/examples/jsm/loaders/RGBELoader":"cfP3d","aad66dc5302fe554":"kwIZv","bbf32b7b7267f897":"5YJZe","@tweenjs/tween.js":"7DfAI"}],"ktPTu":[function(require,module,exports) {
+},{"three":"ktPTu","three/examples/jsm/loaders/GLTFLoader":"dVRsF","three/examples/jsm/controls/OrbitControls":"7mqRv","three/examples/jsm/modifiers/CurveModifier":"iSJKe","./Model/Word":"5NsQR","./Model/Scene":"hmvjl","three/examples/jsm/postprocessing/EffectComposer":"e5jie","three/examples/jsm/postprocessing/RenderPass":"hXnUO","three/examples/jsm/postprocessing/OutputPass":"bggV1","three/examples/jsm/postprocessing/GTAOPass":"dW5AT","three/examples/jsm/renderers/CSS3DRenderer":"dWhzi","three/examples/jsm/loaders/RGBELoader":"cfP3d","./utils/ScrollModule":"gBv8W","@tweenjs/tween.js":"7DfAI","./utils/FlowControl":"lGbfQ","./Model/Scene/LightSource":"k3RBY","a2acd0dc482a9f8b":"c9M7X","7e837f2749c36727":"abAUt","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg","5575bf68e8d133aa":"drHEF"}],"ktPTu":[function(require,module,exports) {
 /**
  * @license
  * Copyright 2010-2023 Three.js Authors
@@ -38197,25 +38517,111 @@ exports.default = CamManager;
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "FRAME", ()=>FRAME);
+parcelHelpers.export(exports, "UPDATE_PAGE", ()=>UPDATE_PAGE);
 var _homeData = require("./Scene/HomeData");
 var _animationModule = require("./Scene/AnimationModule");
 var _setupModel = require("./Scene/SetupModel");
 var _itemAnim = require("./Scene/ItemAnim");
+var _cslider = require("../components/CSlider");
+var _machineUrl = require("../components/machineUrl");
+var _patnersUrl = require("../components/patnersUrl");
+var _tweenJs = require("@tweenjs/tween.js");
+const industryPatners = document.getElementById("industry-corousel");
+const proudly = document.getElementById("proudly-corousel");
+const contianer = document.createElement("div");
+contianer.classList.add("proudly-container");
+Object.entries((0, _patnersUrl.PROUDLY_URL)).forEach(([name, link], index)=>{
+    if (index != 0) {
+        const img = document.createElement("img");
+        const slide = document.createElement("div");
+        img.classList.add("patner__img");
+        img.src = link;
+        slide.appendChild(img);
+        slide.classList.add("slide");
+        contianer.appendChild(slide);
+    }
+});
+Object.entries((0, _patnersUrl.PROUDLY_URL)).forEach(([name, link])=>{
+    const img = document.createElement("img");
+    const slide = document.createElement("div");
+    img.classList.add("patner__img");
+    img.src = link;
+    slide.appendChild(img);
+    slide.classList.add("slide");
+    contianer.appendChild(slide);
+});
+proudly.appendChild(contianer);
+Object.entries((0, _patnersUrl.PATNERS_URL)).forEach(([name, link])=>{
+    const img = document.createElement("img");
+    img.classList.add("patner__img");
+    img.src = link;
+    industryPatners.appendChild(img);
+});
+//load custom sliders
+const machineSlide = new (0, _cslider.CSlider)("front-text-container", "slider-machine", (0, _machineUrl.MACHINE_URL), true, true);
 //export const HOME_ITEMS = new ContentObject(HOME_DATA);
 let actualIndex = 0;
+let lastIndex = 0;
 const FRAME = (index)=>{
     if (index !== actualIndex) {
         console.log("Pagina >>", index);
         try {
             (0, _itemAnim.TIMELINE).get(index)();
         } catch (error) {
-            console.log("PAGINA AUN NO DEFINIDA");
+            console.log("PAGINA AUN NO DEFINIDA>>", index);
         }
         actualIndex = index;
-    } else console.log("misma pagina\nIndex: [", actualIndex, "]");
+    }
 };
+let actualAnimation = animation(0, 1);
+let isAnimReady = false; //set true when the actual page is setup
+let isAnimCompleted = false; //set true when the actual page is setup
+let delta = 0;
+const UPDATE_PAGE = (index)=>{
+    //0           1
+    if (lastIndex != index) {
+        //move to the next point
+        actualAnimation = animation(lastIndex, index); //update animation
+        isAnimReady = true;
+        lastIndex = index;
+        console.log("NUEVA ANIMACION");
+    }
+    if (isAnimReady && !isAnimCompleted) //update all animation
+    actualAnimation.update();
+};
+let count = 0;
+/*
+window.addEventListener("wheel", ()=>{
+    //set propety
+    count = count +0.01;
+    document.documentElement.style.setProperty('--scrolling',  count);
+    console.log(count)
+})
 
-},{"./Scene/HomeData":"jaB1E","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg","./Scene/AnimationModule":"9Tkcr","./Scene/ItemAnim":"8akyT","./Scene/SetupModel":"1GWhf"}],"jaB1E":[function(require,module,exports) {
+
+*/ function animation(start, end) {
+    const animTime = 8000;
+    const inicio = {
+        valor: start
+    };
+    const fin = {
+        valor: end
+    };
+    const tween = new (0, _tweenJs.Tween)(inicio).to(fin, animTime).easing((0, _tweenJs.Easing).Sinusoidal.Out).onUpdate(()=>{
+        currentScroll = inicio.valor;
+        console.log("VALOR ACTUA >", currentScroll, "\nstart >", start, "\nend> ", end);
+    }).start();
+    tween.onComplete(()=>{
+        // Llamada cuando la animación ha finalizado
+        console.log("INICIO COMPLETO");
+        isAnimCompleted = true;
+    //      const cortains = document.getElementById("cortain");
+    //      cortains.style.display = "none";
+    });
+    return tween;
+}
+
+},{"./Scene/HomeData":"jaB1E","./Scene/AnimationModule":"9Tkcr","./Scene/SetupModel":"1GWhf","./Scene/ItemAnim":"8akyT","../components/CSlider":"mfxxW","../components/machineUrl":"8B2US","../components/patnersUrl":"cF4C3","@tweenjs/tween.js":"7DfAI","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"jaB1E":[function(require,module,exports) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "HOME_DATA", ()=>HOME_DATA);
@@ -38366,7 +38772,10 @@ class AnimationModule {
     updateViewByIndex() {}
 }
 
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"8akyT":[function(require,module,exports) {
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"1GWhf":[function(require,module,exports) {
+var _gltfloaderJs = require("three/examples/jsm/loaders/GLTFLoader.js");
+
+},{"three/examples/jsm/loaders/GLTFLoader.js":"dVRsF"}],"8akyT":[function(require,module,exports) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "TIMELINE", ()=>TIMELINE);
@@ -38383,7 +38792,13 @@ const items = {
     logo: ".back-container__logo",
     hmi: ".front-container__span-hmi",
     screen: "#screen-container",
-    heavy: ".back-container__heavy"
+    heavy: ".back-container__heavy",
+    carousel: ".slider-machine",
+    industry: ".industry",
+    proudly: ".proudly",
+    contac: ".contact-us",
+    article: ".articles",
+    footer: ".footer-main"
 };
 const screenFrames = {
     a: new URL(require("6efa1dfc3e6f8bb5")),
@@ -38517,6 +38932,30 @@ const TIMELINE = new Map([
         }
     ],
     [
+        6,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.screen,
+                function: changeUrl(screenFrames.b)
+            }, 0);
+        }
+    ],
+    [
+        7,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.screen,
+                function: changeUrl(screenFrames.c)
+            }, 0);
+        }
+    ],
+    [
         8,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
@@ -38569,12 +39008,103 @@ const TIMELINE = new Map([
                 targets: items.heavy,
                 opacity: 0,
                 left: "-20%"
+            }, 0).add({
+                targets: items.carousel,
+                opacity: 1
+            }, 0);
+        }
+    ],
+    [
+        13,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.carousel,
+                opacity: 0
+            }, 0).add({
+                targets: items.industry,
+                opacity: 1
+            }, 0);
+        }
+    ],
+    [
+        14,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.industry,
+                opacity: 0
+            }, 0).add({
+                targets: items.proudly,
+                opacity: 1
+            }, 0);
+        }
+    ],
+    [
+        15,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.article,
+                opacity: 1,
+                top: "50%"
+            }, 0).add({
+                targets: items.proudly,
+                opacity: 0,
+                zIndex: 100
+            }, 0);
+        }
+    ],
+    [
+        16,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.article,
+                opacity: 0,
+                top: "-50%",
+                zIndex: 0
+            }, 0).add({
+                targets: items.contac,
+                opacity: 1,
+                zIndex: 100,
+                top: "50%"
+            }, 0);
+        }
+    ],
+    [
+        17,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.footer,
+                opacity: 1,
+                top: "50%"
+            }, 0).add({
+                targets: items.contac,
+                opacity: 0,
+                top: "-50%"
             }, 0);
         }
     ]
 ]);
+function changeUrl(url) {
+    const screen = document.getElementById("screen-container");
+    console.log(screen, "<<<");
+    screen.style.backgroundImage = `url(${url})`;
+}
 
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg","animejs/lib/anime.es.js":"jokr5","6efa1dfc3e6f8bb5":"ad7IG","f2f84608e23f08cb":"1rXuC","4f10cf323e57a50c":"2X3Jl"}],"jokr5":[function(require,module,exports) {
+},{"animejs/lib/anime.es.js":"jokr5","6efa1dfc3e6f8bb5":"ad7IG","f2f84608e23f08cb":"1rXuC","4f10cf323e57a50c":"2X3Jl","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"jokr5":[function(require,module,exports) {
 /*
  * anime.js v3.2.2
  * (c) 2023 Julian Garnier
@@ -39864,567 +40394,3626 @@ module.exports = require("e64c34dc5eb5aaf1").getBundleURL("hcaXs") + "screen-2.1
 },{"e64c34dc5eb5aaf1":"j9GCc"}],"2X3Jl":[function(require,module,exports) {
 module.exports = require("e9b6736d7d92b4a0").getBundleURL("hcaXs") + "screen-3.0a223479.png" + "?" + Date.now();
 
-},{"e9b6736d7d92b4a0":"j9GCc"}],"1GWhf":[function(require,module,exports) {
-var _gltfloaderJs = require("three/examples/jsm/loaders/GLTFLoader.js");
-
-},{"three/examples/jsm/loaders/GLTFLoader.js":"dVRsF"}],"dWhzi":[function(require,module,exports) {
+},{"e9b6736d7d92b4a0":"j9GCc"}],"mfxxW":[function(require,module,exports) {
+// core version + navigation, pagination modules:
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "CSS3DObject", ()=>CSS3DObject);
-parcelHelpers.export(exports, "CSS3DSprite", ()=>CSS3DSprite);
-parcelHelpers.export(exports, "CSS3DRenderer", ()=>CSS3DRenderer);
-var _three = require("three");
-/**
- * Based on http://www.emagix.net/academic/mscs-project/item/camera-sync-with-css3-and-webgl-threejs
- */ const _position = new (0, _three.Vector3)();
-const _quaternion = new (0, _three.Quaternion)();
-const _scale = new (0, _three.Vector3)();
-class CSS3DObject extends (0, _three.Object3D) {
-    constructor(element = document.createElement("div")){
-        super();
-        this.isCSS3DObject = true;
-        this.element = element;
-        this.element.style.position = "absolute";
-        this.element.style.pointerEvents = "auto";
-        this.element.style.userSelect = "none";
-        this.element.setAttribute("draggable", false);
-        this.addEventListener("removed", function() {
-            this.traverse(function(object) {
-                if (object.element instanceof Element && object.element.parentNode !== null) object.element.parentNode.removeChild(object.element);
-            });
-        });
-    }
-    copy(source, recursive) {
-        super.copy(source, recursive);
-        this.element = source.element.cloneNode(true);
-        return this;
-    }
-}
-class CSS3DSprite extends CSS3DObject {
-    constructor(element){
-        super(element);
-        this.isCSS3DSprite = true;
-        this.rotation2D = 0;
-    }
-    copy(source, recursive) {
-        super.copy(source, recursive);
-        this.rotation2D = source.rotation2D;
-        return this;
-    }
-}
-//
-const _matrix = new (0, _three.Matrix4)();
-const _matrix2 = new (0, _three.Matrix4)();
-class CSS3DRenderer {
-    constructor(parameters = {}){
-        const _this = this;
-        let _width, _height;
-        let _widthHalf, _heightHalf;
-        const cache = {
-            camera: {
-                style: ""
-            },
-            objects: new WeakMap()
-        };
-        const domElement = parameters.element !== undefined ? parameters.element : document.createElement("div");
-        domElement.style.overflow = "hidden";
-        this.domElement = domElement;
-        const viewElement = document.createElement("div");
-        viewElement.style.transformOrigin = "0 0";
-        viewElement.style.pointerEvents = "none";
-        domElement.appendChild(viewElement);
-        const cameraElement = document.createElement("div");
-        cameraElement.style.transformStyle = "preserve-3d";
-        viewElement.appendChild(cameraElement);
-        this.getSize = function() {
-            return {
-                width: _width,
-                height: _height
-            };
-        };
-        this.render = function(scene, camera) {
-            const fov = camera.projectionMatrix.elements[5] * _heightHalf;
-            if (camera.view && camera.view.enabled) {
-                // view offset
-                viewElement.style.transform = `translate( ${-camera.view.offsetX * (_width / camera.view.width)}px, ${-camera.view.offsetY * (_height / camera.view.height)}px )`;
-                // view fullWidth and fullHeight, view width and height
-                viewElement.style.transform += `scale( ${camera.view.fullWidth / camera.view.width}, ${camera.view.fullHeight / camera.view.height} )`;
-            } else viewElement.style.transform = "";
-            if (scene.matrixWorldAutoUpdate === true) scene.updateMatrixWorld();
-            if (camera.parent === null && camera.matrixWorldAutoUpdate === true) camera.updateMatrixWorld();
-            let tx, ty;
-            if (camera.isOrthographicCamera) {
-                tx = -(camera.right + camera.left) / 2;
-                ty = (camera.top + camera.bottom) / 2;
-            }
-            const scaleByViewOffset = camera.view && camera.view.enabled ? camera.view.height / camera.view.fullHeight : 1;
-            const cameraCSSMatrix = camera.isOrthographicCamera ? `scale( ${scaleByViewOffset} )` + "scale(" + fov + ")" + "translate(" + epsilon(tx) + "px," + epsilon(ty) + "px)" + getCameraCSSMatrix(camera.matrixWorldInverse) : `scale( ${scaleByViewOffset} )` + "translateZ(" + fov + "px)" + getCameraCSSMatrix(camera.matrixWorldInverse);
-            const perspective = camera.isPerspectiveCamera ? "perspective(" + fov + "px) " : "";
-            const style = perspective + cameraCSSMatrix + "translate(" + _widthHalf + "px," + _heightHalf + "px)";
-            if (cache.camera.style !== style) {
-                cameraElement.style.transform = style;
-                cache.camera.style = style;
-            }
-            renderObject(scene, scene, camera, cameraCSSMatrix);
-        };
-        this.setSize = function(width, height) {
-            _width = width;
-            _height = height;
-            _widthHalf = _width / 2;
-            _heightHalf = _height / 2;
-            domElement.style.width = width + "px";
-            domElement.style.height = height + "px";
-            viewElement.style.width = width + "px";
-            viewElement.style.height = height + "px";
-            cameraElement.style.width = width + "px";
-            cameraElement.style.height = height + "px";
-        };
-        function epsilon(value) {
-            return Math.abs(value) < 1e-10 ? 0 : value;
-        }
-        function getCameraCSSMatrix(matrix) {
-            const elements = matrix.elements;
-            return "matrix3d(" + epsilon(elements[0]) + "," + epsilon(-elements[1]) + "," + epsilon(elements[2]) + "," + epsilon(elements[3]) + "," + epsilon(elements[4]) + "," + epsilon(-elements[5]) + "," + epsilon(elements[6]) + "," + epsilon(elements[7]) + "," + epsilon(elements[8]) + "," + epsilon(-elements[9]) + "," + epsilon(elements[10]) + "," + epsilon(elements[11]) + "," + epsilon(elements[12]) + "," + epsilon(-elements[13]) + "," + epsilon(elements[14]) + "," + epsilon(elements[15]) + ")";
-        }
-        function getObjectCSSMatrix(matrix) {
-            const elements = matrix.elements;
-            const matrix3d = "matrix3d(" + epsilon(elements[0]) + "," + epsilon(elements[1]) + "," + epsilon(elements[2]) + "," + epsilon(elements[3]) + "," + epsilon(-elements[4]) + "," + epsilon(-elements[5]) + "," + epsilon(-elements[6]) + "," + epsilon(-elements[7]) + "," + epsilon(elements[8]) + "," + epsilon(elements[9]) + "," + epsilon(elements[10]) + "," + epsilon(elements[11]) + "," + epsilon(elements[12]) + "," + epsilon(elements[13]) + "," + epsilon(elements[14]) + "," + epsilon(elements[15]) + ")";
-            return "translate(-50%,-50%)" + matrix3d;
-        }
-        function renderObject(object, scene, camera, cameraCSSMatrix) {
-            if (object.isCSS3DObject) {
-                const visible = object.visible === true && object.layers.test(camera.layers) === true;
-                object.element.style.display = visible === true ? "" : "none";
-                if (visible === true) {
-                    object.onBeforeRender(_this, scene, camera);
-                    let style;
-                    if (object.isCSS3DSprite) {
-                        // http://swiftcoder.wordpress.com/2008/11/25/constructing-a-billboard-matrix/
-                        _matrix.copy(camera.matrixWorldInverse);
-                        _matrix.transpose();
-                        if (object.rotation2D !== 0) _matrix.multiply(_matrix2.makeRotationZ(object.rotation2D));
-                        object.matrixWorld.decompose(_position, _quaternion, _scale);
-                        _matrix.setPosition(_position);
-                        _matrix.scale(_scale);
-                        _matrix.elements[3] = 0;
-                        _matrix.elements[7] = 0;
-                        _matrix.elements[11] = 0;
-                        _matrix.elements[15] = 1;
-                        style = getObjectCSSMatrix(_matrix);
-                    } else style = getObjectCSSMatrix(object.matrixWorld);
-                    const element = object.element;
-                    const cachedObject = cache.objects.get(object);
-                    if (cachedObject === undefined || cachedObject.style !== style) {
-                        element.style.transform = style;
-                        const objectData = {
-                            style: style
-                        };
-                        cache.objects.set(object, objectData);
-                    }
-                    if (element.parentNode !== cameraElement) cameraElement.appendChild(element);
-                    object.onAfterRender(_this, scene, camera);
-                }
-            }
-            for(let i = 0, l = object.children.length; i < l; i++)renderObject(object.children[i], scene, camera, cameraCSSMatrix);
-        }
-    }
-}
-
-},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"gBv8W":[function(require,module,exports) {
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "ScrollModule", ()=>ScrollModule);
-var _three = require("three");
-var _timer = require("three/examples/jsm/misc/Timer");
-let timeout;
-class ScrollModule {
-    #normalClock = new (0, _three.Clock)(false);
-    #inverseClock = new (0, _three.Clock)(false);
-    #normalTime = 0;
-    #inverseTime = 0;
-    #normalTimer = 0;
-    #inverseTimer = 0;
-    #finalTime = 0;
-    #handleWheelEvent = this.handleWheelEvent.bind(this);
-    #isScrolling = false;
-    #timer = new (0, _timer.Timer)();
-    // Valores constantes
-    timeoutDuration = 400;
-    smoothingFactor = 0.1;
-    ///0.08 for mouse wheel
-    //0.01 for scrollin with maouse pad
-    constructor(maxValue, timeout = 1000, intensity = 0.01){
-        this.direction = null;
-        this.intensity = intensity;
-        this.value = this.#finalTime;
+//generate custom sliders
+parcelHelpers.export(exports, "CSlider", ()=>CSlider);
+var _swiper = require("swiper");
+var _swiperDefault = parcelHelpers.interopDefault(_swiper);
+class CSlider {
+    constructor(target, containerClass, imageLinksObj, hasPagination = false, hasNavigation = false){
+        this.targetContainer = document.getElementById(target);
+        this.containerClass = containerClass;
+        this.imageLinksObj = imageLinksObj;
+        this.hasPagination = hasPagination;
+        this.hasNavigation = hasNavigation;
+        this.element = null; // Inicialmente no hay elemento creado
+        this.slider = null; // Inicialmente no hay slider creado
+        this.wrapper = null; // Referencia al contenedor de slides
+        this.pagination = null; // Referencia al elemento de paginación
+        this.footer = null; // Referencia al item de las propiedades
         this.init();
     }
     init() {
-        // computer listener
-        window.addEventListener("wheel", this.#handleWheelEvent);
+        // Crear el contenedor principal y sus elementos hijos
+        this.element = document.createElement("div");
+        this.element.classList.add("swiper", `${this.containerClass}`);
+        this.footer = document.createElement("div");
+        this.footer.id = this.containerClass + "__item-props";
+        this.wrapper = document.createElement("div");
+        this.wrapper.classList.add("swiper-wrapper");
+        this.pagination = document.createElement("div");
+        this.pagination.classList.add("swiper-pagination");
+        this.element.appendChild(this.wrapper);
+        this.element.appendChild(this.pagination);
+        //geerate slides
+        this.generateSlides();
+        // Agregar el contenedor al DOM
+        this.targetContainer.appendChild(this.element);
+        // Inicializar el slider de Swiper
+        const sliderOptions = {
+            slidesPerView: 3,
+            spaceBetween: 10,
+            loop: true
+        };
+        if (this.hasPagination) sliderOptions.pagination = {
+            el: `.swiper-pagination`
+        };
+        if (this.hasNavigation) sliderOptions.navigation = {
+            nextEl: `.swiper-button-next`,
+            prevEl: `.swiper-button-prev`
+        };
+        this.slider = new (0, _swiperDefault.default)(`.${this.containerClass}`, sliderOptions);
+        //crear slider
+        console.log(this.slider);
     }
-    //setupListener
-    handleWheelEvent(event) {
-        clearTimeout(timeout); // Limpiamos el temporizador existente;
-        if (event.deltaY > 0) this.direction = "down";
-        else this.direction = "up";
-        // Definimos la función que queremos ejecutar después de 900 milisegundos
-        timeout = setTimeout(()=>{
-            // Aquí colocas la función que deseas ejecutar
-            console.log("El movimiento se ha detenido");
-            this.direction = null;
-            this.#normalClock.stop();
-            this.#inverseClock.stop();
-            this.#isScrolling = false;
-        }, this.timeoutDuration);
+    generateSlides() {
+        Object.entries(this.imageLinksObj).forEach(([name, link])=>{
+            const slide = document.createElement("div");
+            slide.classList.add(...[
+                `${name}`,
+                "swiper-slide"
+            ]);
+            const image = document.createElement("img");
+            image.src = link;
+            const props = this.createFooterProps(name);
+            slide.appendChild(image);
+            slide.appendChild(props);
+            slide.id = name;
+            this.wrapper.appendChild(slide);
+        });
+        console.log("Generaci\xf3n completa");
     }
-    updateScroll() {
-        //EL RELOJ NO DEBERIA MANTENER NINGUN VALOR A MENOS QUE SE LLAME
-        switch(this.direction){
-            case "up":
-                //Scrolling up
-                if (!this.#inverseClock.running) {
-                    this.#inverseClock.start();
-                    console.log("Encender Reloj inverso");
-                    this.#isScrolling = true;
-                }
-                this.#inverseTime = this.#inverseClock.getElapsedTime();
-                this.#inverseTimer += this.#inverseTime;
-                break;
-            case "down":
-                //Scrolling down
-                if (!this.#normalClock.running) {
-                    this.#normalClock.start();
-                    console.log("Encender Reloj");
-                    this.#isScrolling = true;
-                }
-                this.#normalTime = this.#normalClock.getElapsedTime();
-                this.#normalTimer += this.#normalTime;
-                break;
-            default:
-                break;
-        }
-        //final time update
-        this.getTime();
+    insertSlides() {
+        this.generateSlides();
     }
-    //get relative final time
-    getTime() {
-        this.#isScrolling;
-        // Calculamos el tiempo relativo multiplicado por la intensidad
-        //console.log(this.#normalTimer, "<<>>", this.#inverseTimer, "\n", this.#normalTimer - this.#inverseTimer)
-        const time = (this.#normalTimer - this.#inverseTimer) * this.intensity;
-        // Si el tiempo resultante es menor que 0, establecemos finalTime en 0, de lo contrario, en el tiempo calculado
-        if (time < 0.01) {
-            this.#inverseTimer = 0;
-            this.#finalTime = 0;
-        } else // Suavizado exponencial
-        this.#finalTime += (time - this.#finalTime) * this.smoothingFactor;
-        //console.log(this.#finalTime, " <<");
-        this.value = this.#finalTime;
-    //console.log(this.value)
+    createFooterProps(name) {
+        // Crear contenedor principal
+        const container = document.createElement("div");
+        container.classList.add("item-props__info");
+        // Crear span para el nombre
+        const nameSpan = document.createElement("span");
+        nameSpan.innerText = name;
+        nameSpan.classList.add("item-props__name");
+        // Crear span para el precio
+        const priceSpan = document.createElement("span");
+        priceSpan.textContent = "Price from 50,000";
+        priceSpan.classList.add("item-props__price");
+        // Agregar los elementos al contenedor principal
+        container.appendChild(nameSpan);
+        container.appendChild(priceSpan);
+        // Devolver el contenedor principal
+        return container;
     }
 }
 
-},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg","three/examples/jsm/misc/Timer":"gQiHM"}],"gQiHM":[function(require,module,exports) {
+},{"swiper":"iM6UL","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"iM6UL":[function(require,module,exports) {
+/**
+ * Swiper 11.0.6
+ * Most modern mobile touch slider and framework with hardware accelerated transitions
+ * https://swiperjs.com
+ *
+ * Copyright 2014-2024 Vladimir Kharlampidi
+ *
+ * Released under the MIT License
+ *
+ * Released on: February 5, 2024
+ */ var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "Swiper", ()=>(0, _swiperCoreMjs.S));
+parcelHelpers.export(exports, "default", ()=>(0, _swiperCoreMjs.S));
+var _swiperCoreMjs = require("./shared/swiper-core.mjs");
+
+},{"./shared/swiper-core.mjs":"c1Vcv","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"c1Vcv":[function(require,module,exports) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "Timer", ()=>Timer);
-parcelHelpers.export(exports, "FixedTimer", ()=>FixedTimer);
-class Timer {
-    constructor(){
-        this._previousTime = 0;
-        this._currentTime = 0;
-        this._startTime = now();
-        this._delta = 0;
-        this._elapsed = 0;
-        this._timescale = 1;
-        // use Page Visibility API to avoid large time delta values
-        this._usePageVisibilityAPI = typeof document !== "undefined" && document.hidden !== undefined;
-        if (this._usePageVisibilityAPI === true) {
-            this._pageVisibilityHandler = handleVisibilityChange.bind(this);
-            document.addEventListener("visibilitychange", this._pageVisibilityHandler, false);
+parcelHelpers.export(exports, "S", ()=>Swiper);
+parcelHelpers.export(exports, "d", ()=>defaults);
+var _ssrWindowEsmMjs = require("./ssr-window.esm.mjs");
+var _utilsMjs = require("./utils.mjs");
+let support;
+function calcSupport() {
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const document1 = (0, _ssrWindowEsmMjs.g)();
+    return {
+        smoothScroll: document1.documentElement && document1.documentElement.style && "scrollBehavior" in document1.documentElement.style,
+        touch: !!("ontouchstart" in window1 || window1.DocumentTouch && document1 instanceof window1.DocumentTouch)
+    };
+}
+function getSupport() {
+    if (!support) support = calcSupport();
+    return support;
+}
+let deviceCached;
+function calcDevice(_temp) {
+    let { userAgent  } = _temp === void 0 ? {} : _temp;
+    const support = getSupport();
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const platform = window1.navigator.platform;
+    const ua = userAgent || window1.navigator.userAgent;
+    const device = {
+        ios: false,
+        android: false
+    };
+    const screenWidth = window1.screen.width;
+    const screenHeight = window1.screen.height;
+    const android = ua.match(/(Android);?[\s\/]+([\d.]+)?/); // eslint-disable-line
+    let ipad = ua.match(/(iPad).*OS\s([\d_]+)/);
+    const ipod = ua.match(/(iPod)(.*OS\s([\d_]+))?/);
+    const iphone = !ipad && ua.match(/(iPhone\sOS|iOS)\s([\d_]+)/);
+    const windows = platform === "Win32";
+    let macos = platform === "MacIntel";
+    // iPadOs 13 fix
+    const iPadScreens = [
+        "1024x1366",
+        "1366x1024",
+        "834x1194",
+        "1194x834",
+        "834x1112",
+        "1112x834",
+        "768x1024",
+        "1024x768",
+        "820x1180",
+        "1180x820",
+        "810x1080",
+        "1080x810"
+    ];
+    if (!ipad && macos && support.touch && iPadScreens.indexOf(`${screenWidth}x${screenHeight}`) >= 0) {
+        ipad = ua.match(/(Version)\/([\d.]+)/);
+        if (!ipad) ipad = [
+            0,
+            1,
+            "13_0_0"
+        ];
+        macos = false;
+    }
+    // Android
+    if (android && !windows) {
+        device.os = "android";
+        device.android = true;
+    }
+    if (ipad || iphone || ipod) {
+        device.os = "ios";
+        device.ios = true;
+    }
+    // Export object
+    return device;
+}
+function getDevice(overrides) {
+    if (overrides === void 0) overrides = {};
+    if (!deviceCached) deviceCached = calcDevice(overrides);
+    return deviceCached;
+}
+let browser;
+function calcBrowser() {
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const device = getDevice();
+    let needPerspectiveFix = false;
+    function isSafari() {
+        const ua = window1.navigator.userAgent.toLowerCase();
+        return ua.indexOf("safari") >= 0 && ua.indexOf("chrome") < 0 && ua.indexOf("android") < 0;
+    }
+    if (isSafari()) {
+        const ua = String(window1.navigator.userAgent);
+        if (ua.includes("Version/")) {
+            const [major, minor] = ua.split("Version/")[1].split(" ")[0].split(".").map((num)=>Number(num));
+            needPerspectiveFix = major < 16 || major === 16 && minor < 2;
         }
     }
-    getDelta() {
-        return this._delta / 1000;
-    }
-    getElapsed() {
-        return this._elapsed / 1000;
-    }
-    getTimescale() {
-        return this._timescale;
-    }
-    setTimescale(timescale) {
-        this._timescale = timescale;
-        return this;
-    }
-    reset() {
-        this._currentTime = now() - this._startTime;
-        return this;
-    }
-    dispose() {
-        if (this._usePageVisibilityAPI === true) document.removeEventListener("visibilitychange", this._pageVisibilityHandler);
-        return this;
-    }
-    update(timestamp) {
-        this._previousTime = this._currentTime;
-        this._currentTime = (timestamp !== undefined ? timestamp : now()) - this._startTime;
-        this._delta = (this._currentTime - this._previousTime) * this._timescale;
-        this._elapsed += this._delta; // _elapsed is the accumulation of all previous deltas
-        return this;
-    }
+    const isWebView = /(iPhone|iPod|iPad).*AppleWebKit(?!.*Safari)/i.test(window1.navigator.userAgent);
+    const isSafariBrowser = isSafari();
+    const need3dFix = isSafariBrowser || isWebView && device.ios;
+    return {
+        isSafari: needPerspectiveFix || isSafariBrowser,
+        needPerspectiveFix,
+        need3dFix,
+        isWebView
+    };
 }
-class FixedTimer extends Timer {
-    constructor(fps = 60){
-        super();
-        this._delta = 1 / fps * 1000;
-    }
-    update() {
-        this._elapsed += this._delta * this._timescale; // _elapsed is the accumulation of all previous deltas
-        return this;
-    }
+function getBrowser() {
+    if (!browser) browser = calcBrowser();
+    return browser;
 }
-function now() {
-    return (typeof performance === "undefined" ? Date : performance).now();
+function Resize(_ref) {
+    let { swiper , on , emit  } = _ref;
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    let observer = null;
+    let animationFrame = null;
+    const resizeHandler = ()=>{
+        if (!swiper || swiper.destroyed || !swiper.initialized) return;
+        emit("beforeResize");
+        emit("resize");
+    };
+    const createObserver = ()=>{
+        if (!swiper || swiper.destroyed || !swiper.initialized) return;
+        observer = new ResizeObserver((entries)=>{
+            animationFrame = window1.requestAnimationFrame(()=>{
+                const { width , height  } = swiper;
+                let newWidth = width;
+                let newHeight = height;
+                entries.forEach((_ref2)=>{
+                    let { contentBoxSize , contentRect , target  } = _ref2;
+                    if (target && target !== swiper.el) return;
+                    newWidth = contentRect ? contentRect.width : (contentBoxSize[0] || contentBoxSize).inlineSize;
+                    newHeight = contentRect ? contentRect.height : (contentBoxSize[0] || contentBoxSize).blockSize;
+                });
+                if (newWidth !== width || newHeight !== height) resizeHandler();
+            });
+        });
+        observer.observe(swiper.el);
+    };
+    const removeObserver = ()=>{
+        if (animationFrame) window1.cancelAnimationFrame(animationFrame);
+        if (observer && observer.unobserve && swiper.el) {
+            observer.unobserve(swiper.el);
+            observer = null;
+        }
+    };
+    const orientationChangeHandler = ()=>{
+        if (!swiper || swiper.destroyed || !swiper.initialized) return;
+        emit("orientationchange");
+    };
+    on("init", ()=>{
+        if (swiper.params.resizeObserver && typeof window1.ResizeObserver !== "undefined") {
+            createObserver();
+            return;
+        }
+        window1.addEventListener("resize", resizeHandler);
+        window1.addEventListener("orientationchange", orientationChangeHandler);
+    });
+    on("destroy", ()=>{
+        removeObserver();
+        window1.removeEventListener("resize", resizeHandler);
+        window1.removeEventListener("orientationchange", orientationChangeHandler);
+    });
 }
-function handleVisibilityChange() {
-    if (document.hidden === false) this.reset();
-}
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"cfP3d":[function(require,module,exports) {
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "RGBELoader", ()=>RGBELoader);
-var _three = require("three");
-// https://github.com/mrdoob/three.js/issues/5552
-// http://en.wikipedia.org/wiki/RGBE_image_format
-class RGBELoader extends (0, _three.DataTextureLoader) {
-    constructor(manager){
-        super(manager);
-        this.type = (0, _three.HalfFloatType);
-    }
-    // adapted from http://www.graphics.cornell.edu/~bjw/rgbe.html
-    parse(buffer) {
-        const /* default error routine.  change this to change error handling */ rgbe_read_error = 1, rgbe_write_error = 2, rgbe_format_error = 3, rgbe_memory_error = 4, rgbe_error = function(rgbe_error_code, msg) {
-            switch(rgbe_error_code){
-                case rgbe_read_error:
-                    throw new Error("THREE.RGBELoader: Read Error: " + (msg || ""));
-                case rgbe_write_error:
-                    throw new Error("THREE.RGBELoader: Write Error: " + (msg || ""));
-                case rgbe_format_error:
-                    throw new Error("THREE.RGBELoader: Bad File Format: " + (msg || ""));
-                default:
-                case rgbe_memory_error:
-                    throw new Error("THREE.RGBELoader: Memory Error: " + (msg || ""));
+function Observer(_ref) {
+    let { swiper , extendParams , on , emit  } = _ref;
+    const observers = [];
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const attach = function(target, options) {
+        if (options === void 0) options = {};
+        const ObserverFunc = window1.MutationObserver || window1.WebkitMutationObserver;
+        const observer = new ObserverFunc((mutations)=>{
+            // The observerUpdate event should only be triggered
+            // once despite the number of mutations.  Additional
+            // triggers are redundant and are very costly
+            if (swiper.__preventObserver__) return;
+            if (mutations.length === 1) {
+                emit("observerUpdate", mutations[0]);
+                return;
             }
-        }, /* offsets to red, green, and blue components in a data (float) pixel */ //RGBE_DATA_RED = 0,
-        //RGBE_DATA_GREEN = 1,
-        //RGBE_DATA_BLUE = 2,
-        /* number of floats per pixel, use 4 since stored in rgba image format */ //RGBE_DATA_SIZE = 4,
-        /* flags indicating which fields in an rgbe_header_info are valid */ RGBE_VALID_PROGRAMTYPE = 1, RGBE_VALID_FORMAT = 2, RGBE_VALID_DIMENSIONS = 4, NEWLINE = "\n", fgets = function(buffer, lineLimit, consume) {
-            const chunkSize = 128;
-            lineLimit = !lineLimit ? 1024 : lineLimit;
-            let p = buffer.pos, i = -1, len = 0, s = "", chunk = String.fromCharCode.apply(null, new Uint16Array(buffer.subarray(p, p + chunkSize)));
-            while(0 > (i = chunk.indexOf(NEWLINE)) && len < lineLimit && p < buffer.byteLength){
-                s += chunk;
-                len += chunk.length;
-                p += chunkSize;
-                chunk += String.fromCharCode.apply(null, new Uint16Array(buffer.subarray(p, p + chunkSize)));
-            }
-            if (-1 < i) {
-                /*for (i=l-1; i>=0; i--) {
-						byteCode = m.charCodeAt(i);
-						if (byteCode > 0x7f && byteCode <= 0x7ff) byteLen++;
-						else if (byteCode > 0x7ff && byteCode <= 0xffff) byteLen += 2;
-						if (byteCode >= 0xDC00 && byteCode <= 0xDFFF) i--; //trail surrogate
-					}*/ if (false !== consume) buffer.pos += len + i + 1;
-                return s + chunk.slice(0, i);
-            }
-            return false;
-        }, /* minimal header reading.  modify if you want to parse more information */ RGBE_ReadHeader = function(buffer) {
-            // regexes to parse header info fields
-            const magic_token_re = /^#\?(\S+)/, gamma_re = /^\s*GAMMA\s*=\s*(\d+(\.\d+)?)\s*$/, exposure_re = /^\s*EXPOSURE\s*=\s*(\d+(\.\d+)?)\s*$/, format_re = /^\s*FORMAT=(\S+)\s*$/, dimensions_re = /^\s*\-Y\s+(\d+)\s+\+X\s+(\d+)\s*$/, // RGBE format header struct
-            header = {
-                valid: 0,
-                /* indicate which fields are valid */ string: "",
-                /* the actual header string */ comments: "",
-                /* comments found in header */ programtype: "RGBE",
-                /* listed at beginning of file to identify it after "#?". defaults to "RGBE" */ format: "",
-                /* RGBE format, default 32-bit_rle_rgbe */ gamma: 1.0,
-                /* image has already been gamma corrected with given gamma. defaults to 1.0 (no correction) */ exposure: 1.0,
-                /* a value of 1.0 in an image corresponds to <exposure> watts/steradian/m^2. defaults to 1.0 */ width: 0,
-                height: 0 /* image dimensions, width/height */ 
+            const observerUpdate = function observerUpdate() {
+                emit("observerUpdate", mutations[0]);
             };
-            let line, match;
-            if (buffer.pos >= buffer.byteLength || !(line = fgets(buffer))) rgbe_error(rgbe_read_error, "no header found");
-            /* if you want to require the magic token then uncomment the next line */ if (!(match = line.match(magic_token_re))) rgbe_error(rgbe_format_error, "bad initial token");
-            header.valid |= RGBE_VALID_PROGRAMTYPE;
-            header.programtype = match[1];
-            header.string += line + "\n";
-            while(true){
-                line = fgets(buffer);
-                if (false === line) break;
-                header.string += line + "\n";
-                if ("#" === line.charAt(0)) {
-                    header.comments += line + "\n";
-                    continue; // comment line
+            if (window1.requestAnimationFrame) window1.requestAnimationFrame(observerUpdate);
+            else window1.setTimeout(observerUpdate, 0);
+        });
+        observer.observe(target, {
+            attributes: typeof options.attributes === "undefined" ? true : options.attributes,
+            childList: typeof options.childList === "undefined" ? true : options.childList,
+            characterData: typeof options.characterData === "undefined" ? true : options.characterData
+        });
+        observers.push(observer);
+    };
+    const init = ()=>{
+        if (!swiper.params.observer) return;
+        if (swiper.params.observeParents) {
+            const containerParents = (0, _utilsMjs.a)(swiper.hostEl);
+            for(let i = 0; i < containerParents.length; i += 1)attach(containerParents[i]);
+        }
+        // Observe container
+        attach(swiper.hostEl, {
+            childList: swiper.params.observeSlideChildren
+        });
+        // Observe wrapper
+        attach(swiper.wrapperEl, {
+            attributes: false
+        });
+    };
+    const destroy = ()=>{
+        observers.forEach((observer)=>{
+            observer.disconnect();
+        });
+        observers.splice(0, observers.length);
+    };
+    extendParams({
+        observer: false,
+        observeParents: false,
+        observeSlideChildren: false
+    });
+    on("init", init);
+    on("destroy", destroy);
+}
+/* eslint-disable no-underscore-dangle */ var eventsEmitter = {
+    on (events, handler, priority) {
+        const self = this;
+        if (!self.eventsListeners || self.destroyed) return self;
+        if (typeof handler !== "function") return self;
+        const method = priority ? "unshift" : "push";
+        events.split(" ").forEach((event)=>{
+            if (!self.eventsListeners[event]) self.eventsListeners[event] = [];
+            self.eventsListeners[event][method](handler);
+        });
+        return self;
+    },
+    once (events, handler, priority) {
+        const self = this;
+        if (!self.eventsListeners || self.destroyed) return self;
+        if (typeof handler !== "function") return self;
+        function onceHandler() {
+            self.off(events, onceHandler);
+            if (onceHandler.__emitterProxy) delete onceHandler.__emitterProxy;
+            for(var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++)args[_key] = arguments[_key];
+            handler.apply(self, args);
+        }
+        onceHandler.__emitterProxy = handler;
+        return self.on(events, onceHandler, priority);
+    },
+    onAny (handler, priority) {
+        const self = this;
+        if (!self.eventsListeners || self.destroyed) return self;
+        if (typeof handler !== "function") return self;
+        const method = priority ? "unshift" : "push";
+        if (self.eventsAnyListeners.indexOf(handler) < 0) self.eventsAnyListeners[method](handler);
+        return self;
+    },
+    offAny (handler) {
+        const self = this;
+        if (!self.eventsListeners || self.destroyed) return self;
+        if (!self.eventsAnyListeners) return self;
+        const index = self.eventsAnyListeners.indexOf(handler);
+        if (index >= 0) self.eventsAnyListeners.splice(index, 1);
+        return self;
+    },
+    off (events, handler) {
+        const self = this;
+        if (!self.eventsListeners || self.destroyed) return self;
+        if (!self.eventsListeners) return self;
+        events.split(" ").forEach((event)=>{
+            if (typeof handler === "undefined") self.eventsListeners[event] = [];
+            else if (self.eventsListeners[event]) self.eventsListeners[event].forEach((eventHandler, index)=>{
+                if (eventHandler === handler || eventHandler.__emitterProxy && eventHandler.__emitterProxy === handler) self.eventsListeners[event].splice(index, 1);
+            });
+        });
+        return self;
+    },
+    emit () {
+        const self = this;
+        if (!self.eventsListeners || self.destroyed) return self;
+        if (!self.eventsListeners) return self;
+        let events;
+        let data;
+        let context;
+        for(var _len2 = arguments.length, args = new Array(_len2), _key2 = 0; _key2 < _len2; _key2++)args[_key2] = arguments[_key2];
+        if (typeof args[0] === "string" || Array.isArray(args[0])) {
+            events = args[0];
+            data = args.slice(1, args.length);
+            context = self;
+        } else {
+            events = args[0].events;
+            data = args[0].data;
+            context = args[0].context || self;
+        }
+        data.unshift(context);
+        const eventsArray = Array.isArray(events) ? events : events.split(" ");
+        eventsArray.forEach((event)=>{
+            if (self.eventsAnyListeners && self.eventsAnyListeners.length) self.eventsAnyListeners.forEach((eventHandler)=>{
+                eventHandler.apply(context, [
+                    event,
+                    ...data
+                ]);
+            });
+            if (self.eventsListeners && self.eventsListeners[event]) self.eventsListeners[event].forEach((eventHandler)=>{
+                eventHandler.apply(context, data);
+            });
+        });
+        return self;
+    }
+};
+function updateSize() {
+    const swiper = this;
+    let width;
+    let height;
+    const el = swiper.el;
+    if (typeof swiper.params.width !== "undefined" && swiper.params.width !== null) width = swiper.params.width;
+    else width = el.clientWidth;
+    if (typeof swiper.params.height !== "undefined" && swiper.params.height !== null) height = swiper.params.height;
+    else height = el.clientHeight;
+    if (width === 0 && swiper.isHorizontal() || height === 0 && swiper.isVertical()) return;
+    // Subtract paddings
+    width = width - parseInt((0, _utilsMjs.o)(el, "padding-left") || 0, 10) - parseInt((0, _utilsMjs.o)(el, "padding-right") || 0, 10);
+    height = height - parseInt((0, _utilsMjs.o)(el, "padding-top") || 0, 10) - parseInt((0, _utilsMjs.o)(el, "padding-bottom") || 0, 10);
+    if (Number.isNaN(width)) width = 0;
+    if (Number.isNaN(height)) height = 0;
+    Object.assign(swiper, {
+        width,
+        height,
+        size: swiper.isHorizontal() ? width : height
+    });
+}
+function updateSlides() {
+    const swiper = this;
+    function getDirectionPropertyValue(node, label) {
+        return parseFloat(node.getPropertyValue(swiper.getDirectionLabel(label)) || 0);
+    }
+    const params = swiper.params;
+    const { wrapperEl , slidesEl , size: swiperSize , rtlTranslate: rtl , wrongRTL  } = swiper;
+    const isVirtual = swiper.virtual && params.virtual.enabled;
+    const previousSlidesLength = isVirtual ? swiper.virtual.slides.length : swiper.slides.length;
+    const slides = (0, _utilsMjs.e)(slidesEl, `.${swiper.params.slideClass}, swiper-slide`);
+    const slidesLength = isVirtual ? swiper.virtual.slides.length : slides.length;
+    let snapGrid = [];
+    const slidesGrid = [];
+    const slidesSizesGrid = [];
+    let offsetBefore = params.slidesOffsetBefore;
+    if (typeof offsetBefore === "function") offsetBefore = params.slidesOffsetBefore.call(swiper);
+    let offsetAfter = params.slidesOffsetAfter;
+    if (typeof offsetAfter === "function") offsetAfter = params.slidesOffsetAfter.call(swiper);
+    const previousSnapGridLength = swiper.snapGrid.length;
+    const previousSlidesGridLength = swiper.slidesGrid.length;
+    let spaceBetween = params.spaceBetween;
+    let slidePosition = -offsetBefore;
+    let prevSlideSize = 0;
+    let index = 0;
+    if (typeof swiperSize === "undefined") return;
+    if (typeof spaceBetween === "string" && spaceBetween.indexOf("%") >= 0) spaceBetween = parseFloat(spaceBetween.replace("%", "")) / 100 * swiperSize;
+    else if (typeof spaceBetween === "string") spaceBetween = parseFloat(spaceBetween);
+    swiper.virtualSize = -spaceBetween;
+    // reset margins
+    slides.forEach((slideEl)=>{
+        if (rtl) slideEl.style.marginLeft = "";
+        else slideEl.style.marginRight = "";
+        slideEl.style.marginBottom = "";
+        slideEl.style.marginTop = "";
+    });
+    // reset cssMode offsets
+    if (params.centeredSlides && params.cssMode) {
+        (0, _utilsMjs.s)(wrapperEl, "--swiper-centered-offset-before", "");
+        (0, _utilsMjs.s)(wrapperEl, "--swiper-centered-offset-after", "");
+    }
+    const gridEnabled = params.grid && params.grid.rows > 1 && swiper.grid;
+    if (gridEnabled) swiper.grid.initSlides(slides);
+    else if (swiper.grid) swiper.grid.unsetSlides();
+    // Calc slides
+    let slideSize;
+    const shouldResetSlideSize = params.slidesPerView === "auto" && params.breakpoints && Object.keys(params.breakpoints).filter((key)=>{
+        return typeof params.breakpoints[key].slidesPerView !== "undefined";
+    }).length > 0;
+    for(let i = 0; i < slidesLength; i += 1){
+        slideSize = 0;
+        let slide;
+        if (slides[i]) slide = slides[i];
+        if (gridEnabled) swiper.grid.updateSlide(i, slide, slides);
+        if (slides[i] && (0, _utilsMjs.o)(slide, "display") === "none") continue; // eslint-disable-line
+        if (params.slidesPerView === "auto") {
+            if (shouldResetSlideSize) slides[i].style[swiper.getDirectionLabel("width")] = ``;
+            const slideStyles = getComputedStyle(slide);
+            const currentTransform = slide.style.transform;
+            const currentWebKitTransform = slide.style.webkitTransform;
+            if (currentTransform) slide.style.transform = "none";
+            if (currentWebKitTransform) slide.style.webkitTransform = "none";
+            if (params.roundLengths) slideSize = swiper.isHorizontal() ? (0, _utilsMjs.f)(slide, "width", true) : (0, _utilsMjs.f)(slide, "height", true);
+            else {
+                // eslint-disable-next-line
+                const width = getDirectionPropertyValue(slideStyles, "width");
+                const paddingLeft = getDirectionPropertyValue(slideStyles, "padding-left");
+                const paddingRight = getDirectionPropertyValue(slideStyles, "padding-right");
+                const marginLeft = getDirectionPropertyValue(slideStyles, "margin-left");
+                const marginRight = getDirectionPropertyValue(slideStyles, "margin-right");
+                const boxSizing = slideStyles.getPropertyValue("box-sizing");
+                if (boxSizing && boxSizing === "border-box") slideSize = width + marginLeft + marginRight;
+                else {
+                    const { clientWidth , offsetWidth  } = slide;
+                    slideSize = width + paddingLeft + paddingRight + marginLeft + marginRight + (offsetWidth - clientWidth);
                 }
-                if (match = line.match(gamma_re)) header.gamma = parseFloat(match[1]);
-                if (match = line.match(exposure_re)) header.exposure = parseFloat(match[1]);
-                if (match = line.match(format_re)) {
-                    header.valid |= RGBE_VALID_FORMAT;
-                    header.format = match[1]; //'32-bit_rle_rgbe';
-                }
-                if (match = line.match(dimensions_re)) {
-                    header.valid |= RGBE_VALID_DIMENSIONS;
-                    header.height = parseInt(match[1], 10);
-                    header.width = parseInt(match[2], 10);
-                }
-                if (header.valid & RGBE_VALID_FORMAT && header.valid & RGBE_VALID_DIMENSIONS) break;
             }
-            if (!(header.valid & RGBE_VALID_FORMAT)) rgbe_error(rgbe_format_error, "missing format specifier");
-            if (!(header.valid & RGBE_VALID_DIMENSIONS)) rgbe_error(rgbe_format_error, "missing image size specifier");
-            return header;
-        }, RGBE_ReadPixels_RLE = function(buffer, w, h) {
-            const scanline_width = w;
-            if (// run length encoding is not allowed so read flat
-            scanline_width < 8 || scanline_width > 0x7fff || // this file is not run length encoded
-            2 !== buffer[0] || 2 !== buffer[1] || buffer[2] & 0x80) // return the flat buffer
-            return new Uint8Array(buffer);
-            if (scanline_width !== (buffer[2] << 8 | buffer[3])) rgbe_error(rgbe_format_error, "wrong scanline width");
-            const data_rgba = new Uint8Array(4 * w * h);
-            if (!data_rgba.length) rgbe_error(rgbe_memory_error, "unable to allocate buffer space");
-            let offset = 0, pos = 0;
-            const ptr_end = 4 * scanline_width;
-            const rgbeStart = new Uint8Array(4);
-            const scanline_buffer = new Uint8Array(ptr_end);
-            let num_scanlines = h;
-            // read in each successive scanline
-            while(num_scanlines > 0 && pos < buffer.byteLength){
-                if (pos + 4 > buffer.byteLength) rgbe_error(rgbe_read_error);
-                rgbeStart[0] = buffer[pos++];
-                rgbeStart[1] = buffer[pos++];
-                rgbeStart[2] = buffer[pos++];
-                rgbeStart[3] = buffer[pos++];
-                if (2 != rgbeStart[0] || 2 != rgbeStart[1] || (rgbeStart[2] << 8 | rgbeStart[3]) != scanline_width) rgbe_error(rgbe_format_error, "bad rgbe scanline format");
-                // read each of the four channels for the scanline into the buffer
-                // first red, then green, then blue, then exponent
-                let ptr = 0, count;
-                while(ptr < ptr_end && pos < buffer.byteLength){
-                    count = buffer[pos++];
-                    const isEncodedRun = count > 128;
-                    if (isEncodedRun) count -= 128;
-                    if (0 === count || ptr + count > ptr_end) rgbe_error(rgbe_format_error, "bad scanline data");
-                    if (isEncodedRun) {
-                        // a (encoded) run of the same value
-                        const byteValue = buffer[pos++];
-                        for(let i = 0; i < count; i++)scanline_buffer[ptr++] = byteValue;
-                    //ptr += count;
-                    } else {
-                        // a literal-run
-                        scanline_buffer.set(buffer.subarray(pos, pos + count), ptr);
-                        ptr += count;
-                        pos += count;
+            if (currentTransform) slide.style.transform = currentTransform;
+            if (currentWebKitTransform) slide.style.webkitTransform = currentWebKitTransform;
+            if (params.roundLengths) slideSize = Math.floor(slideSize);
+        } else {
+            slideSize = (swiperSize - (params.slidesPerView - 1) * spaceBetween) / params.slidesPerView;
+            if (params.roundLengths) slideSize = Math.floor(slideSize);
+            if (slides[i]) slides[i].style[swiper.getDirectionLabel("width")] = `${slideSize}px`;
+        }
+        if (slides[i]) slides[i].swiperSlideSize = slideSize;
+        slidesSizesGrid.push(slideSize);
+        if (params.centeredSlides) {
+            slidePosition = slidePosition + slideSize / 2 + prevSlideSize / 2 + spaceBetween;
+            if (prevSlideSize === 0 && i !== 0) slidePosition = slidePosition - swiperSize / 2 - spaceBetween;
+            if (i === 0) slidePosition = slidePosition - swiperSize / 2 - spaceBetween;
+            if (Math.abs(slidePosition) < 0.001) slidePosition = 0;
+            if (params.roundLengths) slidePosition = Math.floor(slidePosition);
+            if (index % params.slidesPerGroup === 0) snapGrid.push(slidePosition);
+            slidesGrid.push(slidePosition);
+        } else {
+            if (params.roundLengths) slidePosition = Math.floor(slidePosition);
+            if ((index - Math.min(swiper.params.slidesPerGroupSkip, index)) % swiper.params.slidesPerGroup === 0) snapGrid.push(slidePosition);
+            slidesGrid.push(slidePosition);
+            slidePosition = slidePosition + slideSize + spaceBetween;
+        }
+        swiper.virtualSize += slideSize + spaceBetween;
+        prevSlideSize = slideSize;
+        index += 1;
+    }
+    swiper.virtualSize = Math.max(swiper.virtualSize, swiperSize) + offsetAfter;
+    if (rtl && wrongRTL && (params.effect === "slide" || params.effect === "coverflow")) wrapperEl.style.width = `${swiper.virtualSize + spaceBetween}px`;
+    if (params.setWrapperSize) wrapperEl.style[swiper.getDirectionLabel("width")] = `${swiper.virtualSize + spaceBetween}px`;
+    if (gridEnabled) swiper.grid.updateWrapperSize(slideSize, snapGrid);
+    // Remove last grid elements depending on width
+    if (!params.centeredSlides) {
+        const newSlidesGrid = [];
+        for(let i = 0; i < snapGrid.length; i += 1){
+            let slidesGridItem = snapGrid[i];
+            if (params.roundLengths) slidesGridItem = Math.floor(slidesGridItem);
+            if (snapGrid[i] <= swiper.virtualSize - swiperSize) newSlidesGrid.push(slidesGridItem);
+        }
+        snapGrid = newSlidesGrid;
+        if (Math.floor(swiper.virtualSize - swiperSize) - Math.floor(snapGrid[snapGrid.length - 1]) > 1) snapGrid.push(swiper.virtualSize - swiperSize);
+    }
+    if (isVirtual && params.loop) {
+        const size = slidesSizesGrid[0] + spaceBetween;
+        if (params.slidesPerGroup > 1) {
+            const groups = Math.ceil((swiper.virtual.slidesBefore + swiper.virtual.slidesAfter) / params.slidesPerGroup);
+            const groupSize = size * params.slidesPerGroup;
+            for(let i = 0; i < groups; i += 1)snapGrid.push(snapGrid[snapGrid.length - 1] + groupSize);
+        }
+        for(let i = 0; i < swiper.virtual.slidesBefore + swiper.virtual.slidesAfter; i += 1){
+            if (params.slidesPerGroup === 1) snapGrid.push(snapGrid[snapGrid.length - 1] + size);
+            slidesGrid.push(slidesGrid[slidesGrid.length - 1] + size);
+            swiper.virtualSize += size;
+        }
+    }
+    if (snapGrid.length === 0) snapGrid = [
+        0
+    ];
+    if (spaceBetween !== 0) {
+        const key = swiper.isHorizontal() && rtl ? "marginLeft" : swiper.getDirectionLabel("marginRight");
+        slides.filter((_, slideIndex)=>{
+            if (!params.cssMode || params.loop) return true;
+            if (slideIndex === slides.length - 1) return false;
+            return true;
+        }).forEach((slideEl)=>{
+            slideEl.style[key] = `${spaceBetween}px`;
+        });
+    }
+    if (params.centeredSlides && params.centeredSlidesBounds) {
+        let allSlidesSize = 0;
+        slidesSizesGrid.forEach((slideSizeValue)=>{
+            allSlidesSize += slideSizeValue + (spaceBetween || 0);
+        });
+        allSlidesSize -= spaceBetween;
+        const maxSnap = allSlidesSize - swiperSize;
+        snapGrid = snapGrid.map((snap)=>{
+            if (snap <= 0) return -offsetBefore;
+            if (snap > maxSnap) return maxSnap + offsetAfter;
+            return snap;
+        });
+    }
+    if (params.centerInsufficientSlides) {
+        let allSlidesSize = 0;
+        slidesSizesGrid.forEach((slideSizeValue)=>{
+            allSlidesSize += slideSizeValue + (spaceBetween || 0);
+        });
+        allSlidesSize -= spaceBetween;
+        if (allSlidesSize < swiperSize) {
+            const allSlidesOffset = (swiperSize - allSlidesSize) / 2;
+            snapGrid.forEach((snap, snapIndex)=>{
+                snapGrid[snapIndex] = snap - allSlidesOffset;
+            });
+            slidesGrid.forEach((snap, snapIndex)=>{
+                slidesGrid[snapIndex] = snap + allSlidesOffset;
+            });
+        }
+    }
+    Object.assign(swiper, {
+        slides,
+        snapGrid,
+        slidesGrid,
+        slidesSizesGrid
+    });
+    if (params.centeredSlides && params.cssMode && !params.centeredSlidesBounds) {
+        (0, _utilsMjs.s)(wrapperEl, "--swiper-centered-offset-before", `${-snapGrid[0]}px`);
+        (0, _utilsMjs.s)(wrapperEl, "--swiper-centered-offset-after", `${swiper.size / 2 - slidesSizesGrid[slidesSizesGrid.length - 1] / 2}px`);
+        const addToSnapGrid = -swiper.snapGrid[0];
+        const addToSlidesGrid = -swiper.slidesGrid[0];
+        swiper.snapGrid = swiper.snapGrid.map((v)=>v + addToSnapGrid);
+        swiper.slidesGrid = swiper.slidesGrid.map((v)=>v + addToSlidesGrid);
+    }
+    if (slidesLength !== previousSlidesLength) swiper.emit("slidesLengthChange");
+    if (snapGrid.length !== previousSnapGridLength) {
+        if (swiper.params.watchOverflow) swiper.checkOverflow();
+        swiper.emit("snapGridLengthChange");
+    }
+    if (slidesGrid.length !== previousSlidesGridLength) swiper.emit("slidesGridLengthChange");
+    if (params.watchSlidesProgress) swiper.updateSlidesOffset();
+    swiper.emit("slidesUpdated");
+    if (!isVirtual && !params.cssMode && (params.effect === "slide" || params.effect === "fade")) {
+        const backFaceHiddenClass = `${params.containerModifierClass}backface-hidden`;
+        const hasClassBackfaceClassAdded = swiper.el.classList.contains(backFaceHiddenClass);
+        if (slidesLength <= params.maxBackfaceHiddenSlides) {
+            if (!hasClassBackfaceClassAdded) swiper.el.classList.add(backFaceHiddenClass);
+        } else if (hasClassBackfaceClassAdded) swiper.el.classList.remove(backFaceHiddenClass);
+    }
+}
+function updateAutoHeight(speed) {
+    const swiper = this;
+    const activeSlides = [];
+    const isVirtual = swiper.virtual && swiper.params.virtual.enabled;
+    let newHeight = 0;
+    let i;
+    if (typeof speed === "number") swiper.setTransition(speed);
+    else if (speed === true) swiper.setTransition(swiper.params.speed);
+    const getSlideByIndex = (index)=>{
+        if (isVirtual) return swiper.slides[swiper.getSlideIndexByData(index)];
+        return swiper.slides[index];
+    };
+    // Find slides currently in view
+    if (swiper.params.slidesPerView !== "auto" && swiper.params.slidesPerView > 1) {
+        if (swiper.params.centeredSlides) (swiper.visibleSlides || []).forEach((slide)=>{
+            activeSlides.push(slide);
+        });
+        else for(i = 0; i < Math.ceil(swiper.params.slidesPerView); i += 1){
+            const index = swiper.activeIndex + i;
+            if (index > swiper.slides.length && !isVirtual) break;
+            activeSlides.push(getSlideByIndex(index));
+        }
+    } else activeSlides.push(getSlideByIndex(swiper.activeIndex));
+    // Find new height from highest slide in view
+    for(i = 0; i < activeSlides.length; i += 1)if (typeof activeSlides[i] !== "undefined") {
+        const height = activeSlides[i].offsetHeight;
+        newHeight = height > newHeight ? height : newHeight;
+    }
+    // Update Height
+    if (newHeight || newHeight === 0) swiper.wrapperEl.style.height = `${newHeight}px`;
+}
+function updateSlidesOffset() {
+    const swiper = this;
+    const slides = swiper.slides;
+    // eslint-disable-next-line
+    const minusOffset = swiper.isElement ? swiper.isHorizontal() ? swiper.wrapperEl.offsetLeft : swiper.wrapperEl.offsetTop : 0;
+    for(let i = 0; i < slides.length; i += 1)slides[i].swiperSlideOffset = (swiper.isHorizontal() ? slides[i].offsetLeft : slides[i].offsetTop) - minusOffset - swiper.cssOverflowAdjustment();
+}
+function updateSlidesProgress(translate) {
+    if (translate === void 0) translate = this && this.translate || 0;
+    const swiper = this;
+    const params = swiper.params;
+    const { slides , rtlTranslate: rtl , snapGrid  } = swiper;
+    if (slides.length === 0) return;
+    if (typeof slides[0].swiperSlideOffset === "undefined") swiper.updateSlidesOffset();
+    let offsetCenter = -translate;
+    if (rtl) offsetCenter = translate;
+    // Visible Slides
+    slides.forEach((slideEl)=>{
+        slideEl.classList.remove(params.slideVisibleClass, params.slideFullyVisibleClass);
+    });
+    swiper.visibleSlidesIndexes = [];
+    swiper.visibleSlides = [];
+    let spaceBetween = params.spaceBetween;
+    if (typeof spaceBetween === "string" && spaceBetween.indexOf("%") >= 0) spaceBetween = parseFloat(spaceBetween.replace("%", "")) / 100 * swiper.size;
+    else if (typeof spaceBetween === "string") spaceBetween = parseFloat(spaceBetween);
+    for(let i = 0; i < slides.length; i += 1){
+        const slide = slides[i];
+        let slideOffset = slide.swiperSlideOffset;
+        if (params.cssMode && params.centeredSlides) slideOffset -= slides[0].swiperSlideOffset;
+        const slideProgress = (offsetCenter + (params.centeredSlides ? swiper.minTranslate() : 0) - slideOffset) / (slide.swiperSlideSize + spaceBetween);
+        const originalSlideProgress = (offsetCenter - snapGrid[0] + (params.centeredSlides ? swiper.minTranslate() : 0) - slideOffset) / (slide.swiperSlideSize + spaceBetween);
+        const slideBefore = -(offsetCenter - slideOffset);
+        const slideAfter = slideBefore + swiper.slidesSizesGrid[i];
+        const isFullyVisible = slideBefore >= 0 && slideBefore <= swiper.size - swiper.slidesSizesGrid[i];
+        const isVisible = slideBefore >= 0 && slideBefore < swiper.size - 1 || slideAfter > 1 && slideAfter <= swiper.size || slideBefore <= 0 && slideAfter >= swiper.size;
+        if (isVisible) {
+            swiper.visibleSlides.push(slide);
+            swiper.visibleSlidesIndexes.push(i);
+            slides[i].classList.add(params.slideVisibleClass);
+        }
+        if (isFullyVisible) slides[i].classList.add(params.slideFullyVisibleClass);
+        slide.progress = rtl ? -slideProgress : slideProgress;
+        slide.originalProgress = rtl ? -originalSlideProgress : originalSlideProgress;
+    }
+}
+function updateProgress(translate) {
+    const swiper = this;
+    if (typeof translate === "undefined") {
+        const multiplier = swiper.rtlTranslate ? -1 : 1;
+        // eslint-disable-next-line
+        translate = swiper && swiper.translate && swiper.translate * multiplier || 0;
+    }
+    const params = swiper.params;
+    const translatesDiff = swiper.maxTranslate() - swiper.minTranslate();
+    let { progress , isBeginning , isEnd , progressLoop  } = swiper;
+    const wasBeginning = isBeginning;
+    const wasEnd = isEnd;
+    if (translatesDiff === 0) {
+        progress = 0;
+        isBeginning = true;
+        isEnd = true;
+    } else {
+        progress = (translate - swiper.minTranslate()) / translatesDiff;
+        const isBeginningRounded = Math.abs(translate - swiper.minTranslate()) < 1;
+        const isEndRounded = Math.abs(translate - swiper.maxTranslate()) < 1;
+        isBeginning = isBeginningRounded || progress <= 0;
+        isEnd = isEndRounded || progress >= 1;
+        if (isBeginningRounded) progress = 0;
+        if (isEndRounded) progress = 1;
+    }
+    if (params.loop) {
+        const firstSlideIndex = swiper.getSlideIndexByData(0);
+        const lastSlideIndex = swiper.getSlideIndexByData(swiper.slides.length - 1);
+        const firstSlideTranslate = swiper.slidesGrid[firstSlideIndex];
+        const lastSlideTranslate = swiper.slidesGrid[lastSlideIndex];
+        const translateMax = swiper.slidesGrid[swiper.slidesGrid.length - 1];
+        const translateAbs = Math.abs(translate);
+        if (translateAbs >= firstSlideTranslate) progressLoop = (translateAbs - firstSlideTranslate) / translateMax;
+        else progressLoop = (translateAbs + translateMax - lastSlideTranslate) / translateMax;
+        if (progressLoop > 1) progressLoop -= 1;
+    }
+    Object.assign(swiper, {
+        progress,
+        progressLoop,
+        isBeginning,
+        isEnd
+    });
+    if (params.watchSlidesProgress || params.centeredSlides && params.autoHeight) swiper.updateSlidesProgress(translate);
+    if (isBeginning && !wasBeginning) swiper.emit("reachBeginning toEdge");
+    if (isEnd && !wasEnd) swiper.emit("reachEnd toEdge");
+    if (wasBeginning && !isBeginning || wasEnd && !isEnd) swiper.emit("fromEdge");
+    swiper.emit("progress", progress);
+}
+function updateSlidesClasses() {
+    const swiper = this;
+    const { slides , params , slidesEl , activeIndex  } = swiper;
+    const isVirtual = swiper.virtual && params.virtual.enabled;
+    const gridEnabled = swiper.grid && params.grid && params.grid.rows > 1;
+    const getFilteredSlide = (selector)=>{
+        return (0, _utilsMjs.e)(slidesEl, `.${params.slideClass}${selector}, swiper-slide${selector}`)[0];
+    };
+    slides.forEach((slideEl)=>{
+        slideEl.classList.remove(params.slideActiveClass, params.slideNextClass, params.slidePrevClass);
+    });
+    let activeSlide;
+    let prevSlide;
+    let nextSlide;
+    if (isVirtual) {
+        if (params.loop) {
+            let slideIndex = activeIndex - swiper.virtual.slidesBefore;
+            if (slideIndex < 0) slideIndex = swiper.virtual.slides.length + slideIndex;
+            if (slideIndex >= swiper.virtual.slides.length) slideIndex -= swiper.virtual.slides.length;
+            activeSlide = getFilteredSlide(`[data-swiper-slide-index="${slideIndex}"]`);
+        } else activeSlide = getFilteredSlide(`[data-swiper-slide-index="${activeIndex}"]`);
+    } else if (gridEnabled) {
+        activeSlide = slides.filter((slideEl)=>slideEl.column === activeIndex)[0];
+        nextSlide = slides.filter((slideEl)=>slideEl.column === activeIndex + 1)[0];
+        prevSlide = slides.filter((slideEl)=>slideEl.column === activeIndex - 1)[0];
+    } else activeSlide = slides[activeIndex];
+    if (activeSlide) {
+        // Active classes
+        activeSlide.classList.add(params.slideActiveClass);
+        if (gridEnabled) {
+            if (nextSlide) nextSlide.classList.add(params.slideNextClass);
+            if (prevSlide) prevSlide.classList.add(params.slidePrevClass);
+        } else {
+            // Next Slide
+            nextSlide = (0, _utilsMjs.p)(activeSlide, `.${params.slideClass}, swiper-slide`)[0];
+            if (params.loop && !nextSlide) nextSlide = slides[0];
+            if (nextSlide) nextSlide.classList.add(params.slideNextClass);
+            // Prev Slide
+            prevSlide = (0, _utilsMjs.q)(activeSlide, `.${params.slideClass}, swiper-slide`)[0];
+            params.loop;
+            if (prevSlide) prevSlide.classList.add(params.slidePrevClass);
+        }
+    }
+    swiper.emitSlidesClasses();
+}
+const processLazyPreloader = (swiper, imageEl)=>{
+    if (!swiper || swiper.destroyed || !swiper.params) return;
+    const slideSelector = ()=>swiper.isElement ? `swiper-slide` : `.${swiper.params.slideClass}`;
+    const slideEl = imageEl.closest(slideSelector());
+    if (slideEl) {
+        let lazyEl = slideEl.querySelector(`.${swiper.params.lazyPreloaderClass}`);
+        if (!lazyEl && swiper.isElement) {
+            if (slideEl.shadowRoot) lazyEl = slideEl.shadowRoot.querySelector(`.${swiper.params.lazyPreloaderClass}`);
+            else // init later
+            requestAnimationFrame(()=>{
+                if (slideEl.shadowRoot) {
+                    lazyEl = slideEl.shadowRoot.querySelector(`.${swiper.params.lazyPreloaderClass}`);
+                    if (lazyEl) lazyEl.remove();
+                }
+            });
+        }
+        if (lazyEl) lazyEl.remove();
+    }
+};
+const unlazy = (swiper, index)=>{
+    if (!swiper.slides[index]) return;
+    const imageEl = swiper.slides[index].querySelector('[loading="lazy"]');
+    if (imageEl) imageEl.removeAttribute("loading");
+};
+const preload = (swiper)=>{
+    if (!swiper || swiper.destroyed || !swiper.params) return;
+    let amount = swiper.params.lazyPreloadPrevNext;
+    const len = swiper.slides.length;
+    if (!len || !amount || amount < 0) return;
+    amount = Math.min(amount, len);
+    const slidesPerView = swiper.params.slidesPerView === "auto" ? swiper.slidesPerViewDynamic() : Math.ceil(swiper.params.slidesPerView);
+    const activeIndex = swiper.activeIndex;
+    if (swiper.params.grid && swiper.params.grid.rows > 1) {
+        const activeColumn = activeIndex;
+        const preloadColumns = [
+            activeColumn - amount
+        ];
+        preloadColumns.push(...Array.from({
+            length: amount
+        }).map((_, i)=>{
+            return activeColumn + slidesPerView + i;
+        }));
+        swiper.slides.forEach((slideEl, i)=>{
+            if (preloadColumns.includes(slideEl.column)) unlazy(swiper, i);
+        });
+        return;
+    }
+    const slideIndexLastInView = activeIndex + slidesPerView - 1;
+    if (swiper.params.rewind || swiper.params.loop) for(let i = activeIndex - amount; i <= slideIndexLastInView + amount; i += 1){
+        const realIndex = (i % len + len) % len;
+        if (realIndex < activeIndex || realIndex > slideIndexLastInView) unlazy(swiper, realIndex);
+    }
+    else {
+        for(let i = Math.max(activeIndex - amount, 0); i <= Math.min(slideIndexLastInView + amount, len - 1); i += 1)if (i !== activeIndex && (i > slideIndexLastInView || i < activeIndex)) unlazy(swiper, i);
+    }
+};
+function getActiveIndexByTranslate(swiper) {
+    const { slidesGrid , params  } = swiper;
+    const translate = swiper.rtlTranslate ? swiper.translate : -swiper.translate;
+    let activeIndex;
+    for(let i = 0; i < slidesGrid.length; i += 1){
+        if (typeof slidesGrid[i + 1] !== "undefined") {
+            if (translate >= slidesGrid[i] && translate < slidesGrid[i + 1] - (slidesGrid[i + 1] - slidesGrid[i]) / 2) activeIndex = i;
+            else if (translate >= slidesGrid[i] && translate < slidesGrid[i + 1]) activeIndex = i + 1;
+        } else if (translate >= slidesGrid[i]) activeIndex = i;
+    }
+    // Normalize slideIndex
+    if (params.normalizeSlideIndex) {
+        if (activeIndex < 0 || typeof activeIndex === "undefined") activeIndex = 0;
+    }
+    return activeIndex;
+}
+function updateActiveIndex(newActiveIndex) {
+    const swiper = this;
+    const translate = swiper.rtlTranslate ? swiper.translate : -swiper.translate;
+    const { snapGrid , params , activeIndex: previousIndex , realIndex: previousRealIndex , snapIndex: previousSnapIndex  } = swiper;
+    let activeIndex = newActiveIndex;
+    let snapIndex;
+    const getVirtualRealIndex = (aIndex)=>{
+        let realIndex = aIndex - swiper.virtual.slidesBefore;
+        if (realIndex < 0) realIndex = swiper.virtual.slides.length + realIndex;
+        if (realIndex >= swiper.virtual.slides.length) realIndex -= swiper.virtual.slides.length;
+        return realIndex;
+    };
+    if (typeof activeIndex === "undefined") activeIndex = getActiveIndexByTranslate(swiper);
+    if (snapGrid.indexOf(translate) >= 0) snapIndex = snapGrid.indexOf(translate);
+    else {
+        const skip = Math.min(params.slidesPerGroupSkip, activeIndex);
+        snapIndex = skip + Math.floor((activeIndex - skip) / params.slidesPerGroup);
+    }
+    if (snapIndex >= snapGrid.length) snapIndex = snapGrid.length - 1;
+    if (activeIndex === previousIndex && !swiper.params.loop) {
+        if (snapIndex !== previousSnapIndex) {
+            swiper.snapIndex = snapIndex;
+            swiper.emit("snapIndexChange");
+        }
+        return;
+    }
+    if (activeIndex === previousIndex && swiper.params.loop && swiper.virtual && swiper.params.virtual.enabled) {
+        swiper.realIndex = getVirtualRealIndex(activeIndex);
+        return;
+    }
+    const gridEnabled = swiper.grid && params.grid && params.grid.rows > 1;
+    // Get real index
+    let realIndex;
+    if (swiper.virtual && params.virtual.enabled && params.loop) realIndex = getVirtualRealIndex(activeIndex);
+    else if (gridEnabled) {
+        const firstSlideInColumn = swiper.slides.filter((slideEl)=>slideEl.column === activeIndex)[0];
+        let activeSlideIndex = parseInt(firstSlideInColumn.getAttribute("data-swiper-slide-index"), 10);
+        if (Number.isNaN(activeSlideIndex)) activeSlideIndex = Math.max(swiper.slides.indexOf(firstSlideInColumn), 0);
+        realIndex = Math.floor(activeSlideIndex / params.grid.rows);
+    } else if (swiper.slides[activeIndex]) {
+        const slideIndex = swiper.slides[activeIndex].getAttribute("data-swiper-slide-index");
+        if (slideIndex) realIndex = parseInt(slideIndex, 10);
+        else realIndex = activeIndex;
+    } else realIndex = activeIndex;
+    Object.assign(swiper, {
+        previousSnapIndex,
+        snapIndex,
+        previousRealIndex,
+        realIndex,
+        previousIndex,
+        activeIndex
+    });
+    if (swiper.initialized) preload(swiper);
+    swiper.emit("activeIndexChange");
+    swiper.emit("snapIndexChange");
+    if (swiper.initialized || swiper.params.runCallbacksOnInit) {
+        if (previousRealIndex !== realIndex) swiper.emit("realIndexChange");
+        swiper.emit("slideChange");
+    }
+}
+function updateClickedSlide(el, path) {
+    const swiper = this;
+    const params = swiper.params;
+    let slide = el.closest(`.${params.slideClass}, swiper-slide`);
+    if (!slide && swiper.isElement && path && path.length > 1 && path.includes(el)) [
+        ...path.slice(path.indexOf(el) + 1, path.length)
+    ].forEach((pathEl)=>{
+        if (!slide && pathEl.matches && pathEl.matches(`.${params.slideClass}, swiper-slide`)) slide = pathEl;
+    });
+    let slideFound = false;
+    let slideIndex;
+    if (slide) {
+        for(let i = 0; i < swiper.slides.length; i += 1)if (swiper.slides[i] === slide) {
+            slideFound = true;
+            slideIndex = i;
+            break;
+        }
+    }
+    if (slide && slideFound) {
+        swiper.clickedSlide = slide;
+        if (swiper.virtual && swiper.params.virtual.enabled) swiper.clickedIndex = parseInt(slide.getAttribute("data-swiper-slide-index"), 10);
+        else swiper.clickedIndex = slideIndex;
+    } else {
+        swiper.clickedSlide = undefined;
+        swiper.clickedIndex = undefined;
+        return;
+    }
+    if (params.slideToClickedSlide && swiper.clickedIndex !== undefined && swiper.clickedIndex !== swiper.activeIndex) swiper.slideToClickedSlide();
+}
+var update = {
+    updateSize,
+    updateSlides,
+    updateAutoHeight,
+    updateSlidesOffset,
+    updateSlidesProgress,
+    updateProgress,
+    updateSlidesClasses,
+    updateActiveIndex,
+    updateClickedSlide
+};
+function getSwiperTranslate(axis) {
+    if (axis === void 0) axis = this.isHorizontal() ? "x" : "y";
+    const swiper = this;
+    const { params , rtlTranslate: rtl , translate , wrapperEl  } = swiper;
+    if (params.virtualTranslate) return rtl ? -translate : translate;
+    if (params.cssMode) return translate;
+    let currentTranslate = (0, _utilsMjs.i)(wrapperEl, axis);
+    currentTranslate += swiper.cssOverflowAdjustment();
+    if (rtl) currentTranslate = -currentTranslate;
+    return currentTranslate || 0;
+}
+function setTranslate(translate, byController) {
+    const swiper = this;
+    const { rtlTranslate: rtl , params , wrapperEl , progress  } = swiper;
+    let x = 0;
+    let y = 0;
+    const z = 0;
+    if (swiper.isHorizontal()) x = rtl ? -translate : translate;
+    else y = translate;
+    if (params.roundLengths) {
+        x = Math.floor(x);
+        y = Math.floor(y);
+    }
+    swiper.previousTranslate = swiper.translate;
+    swiper.translate = swiper.isHorizontal() ? x : y;
+    if (params.cssMode) wrapperEl[swiper.isHorizontal() ? "scrollLeft" : "scrollTop"] = swiper.isHorizontal() ? -x : -y;
+    else if (!params.virtualTranslate) {
+        if (swiper.isHorizontal()) x -= swiper.cssOverflowAdjustment();
+        else y -= swiper.cssOverflowAdjustment();
+        wrapperEl.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+    }
+    // Check if we need to update progress
+    let newProgress;
+    const translatesDiff = swiper.maxTranslate() - swiper.minTranslate();
+    if (translatesDiff === 0) newProgress = 0;
+    else newProgress = (translate - swiper.minTranslate()) / translatesDiff;
+    if (newProgress !== progress) swiper.updateProgress(translate);
+    swiper.emit("setTranslate", swiper.translate, byController);
+}
+function minTranslate() {
+    return -this.snapGrid[0];
+}
+function maxTranslate() {
+    return -this.snapGrid[this.snapGrid.length - 1];
+}
+function translateTo(translate, speed, runCallbacks, translateBounds, internal) {
+    if (translate === void 0) translate = 0;
+    if (speed === void 0) speed = this.params.speed;
+    if (runCallbacks === void 0) runCallbacks = true;
+    if (translateBounds === void 0) translateBounds = true;
+    const swiper = this;
+    const { params , wrapperEl  } = swiper;
+    if (swiper.animating && params.preventInteractionOnTransition) return false;
+    const minTranslate = swiper.minTranslate();
+    const maxTranslate = swiper.maxTranslate();
+    let newTranslate;
+    if (translateBounds && translate > minTranslate) newTranslate = minTranslate;
+    else if (translateBounds && translate < maxTranslate) newTranslate = maxTranslate;
+    else newTranslate = translate;
+    // Update progress
+    swiper.updateProgress(newTranslate);
+    if (params.cssMode) {
+        const isH = swiper.isHorizontal();
+        if (speed === 0) wrapperEl[isH ? "scrollLeft" : "scrollTop"] = -newTranslate;
+        else {
+            if (!swiper.support.smoothScroll) {
+                (0, _utilsMjs.r)({
+                    swiper,
+                    targetPosition: -newTranslate,
+                    side: isH ? "left" : "top"
+                });
+                return true;
+            }
+            wrapperEl.scrollTo({
+                [isH ? "left" : "top"]: -newTranslate,
+                behavior: "smooth"
+            });
+        }
+        return true;
+    }
+    if (speed === 0) {
+        swiper.setTransition(0);
+        swiper.setTranslate(newTranslate);
+        if (runCallbacks) {
+            swiper.emit("beforeTransitionStart", speed, internal);
+            swiper.emit("transitionEnd");
+        }
+    } else {
+        swiper.setTransition(speed);
+        swiper.setTranslate(newTranslate);
+        if (runCallbacks) {
+            swiper.emit("beforeTransitionStart", speed, internal);
+            swiper.emit("transitionStart");
+        }
+        if (!swiper.animating) {
+            swiper.animating = true;
+            if (!swiper.onTranslateToWrapperTransitionEnd) swiper.onTranslateToWrapperTransitionEnd = function transitionEnd(e) {
+                if (!swiper || swiper.destroyed) return;
+                if (e.target !== this) return;
+                swiper.wrapperEl.removeEventListener("transitionend", swiper.onTranslateToWrapperTransitionEnd);
+                swiper.onTranslateToWrapperTransitionEnd = null;
+                delete swiper.onTranslateToWrapperTransitionEnd;
+                if (runCallbacks) swiper.emit("transitionEnd");
+            };
+            swiper.wrapperEl.addEventListener("transitionend", swiper.onTranslateToWrapperTransitionEnd);
+        }
+    }
+    return true;
+}
+var translate = {
+    getTranslate: getSwiperTranslate,
+    setTranslate,
+    minTranslate,
+    maxTranslate,
+    translateTo
+};
+function setTransition(duration, byController) {
+    const swiper = this;
+    if (!swiper.params.cssMode) {
+        swiper.wrapperEl.style.transitionDuration = `${duration}ms`;
+        swiper.wrapperEl.style.transitionDelay = duration === 0 ? `0ms` : "";
+    }
+    swiper.emit("setTransition", duration, byController);
+}
+function transitionEmit(_ref) {
+    let { swiper , runCallbacks , direction , step  } = _ref;
+    const { activeIndex , previousIndex  } = swiper;
+    let dir = direction;
+    if (!dir) {
+        if (activeIndex > previousIndex) dir = "next";
+        else if (activeIndex < previousIndex) dir = "prev";
+        else dir = "reset";
+    }
+    swiper.emit(`transition${step}`);
+    if (runCallbacks && activeIndex !== previousIndex) {
+        if (dir === "reset") {
+            swiper.emit(`slideResetTransition${step}`);
+            return;
+        }
+        swiper.emit(`slideChangeTransition${step}`);
+        if (dir === "next") swiper.emit(`slideNextTransition${step}`);
+        else swiper.emit(`slidePrevTransition${step}`);
+    }
+}
+function transitionStart(runCallbacks, direction) {
+    if (runCallbacks === void 0) runCallbacks = true;
+    const swiper = this;
+    const { params  } = swiper;
+    if (params.cssMode) return;
+    if (params.autoHeight) swiper.updateAutoHeight();
+    transitionEmit({
+        swiper,
+        runCallbacks,
+        direction,
+        step: "Start"
+    });
+}
+function transitionEnd(runCallbacks, direction) {
+    if (runCallbacks === void 0) runCallbacks = true;
+    const swiper = this;
+    const { params  } = swiper;
+    swiper.animating = false;
+    if (params.cssMode) return;
+    swiper.setTransition(0);
+    transitionEmit({
+        swiper,
+        runCallbacks,
+        direction,
+        step: "End"
+    });
+}
+var transition = {
+    setTransition,
+    transitionStart,
+    transitionEnd
+};
+function slideTo(index, speed, runCallbacks, internal, initial) {
+    if (index === void 0) index = 0;
+    if (speed === void 0) speed = this.params.speed;
+    if (runCallbacks === void 0) runCallbacks = true;
+    if (typeof index === "string") index = parseInt(index, 10);
+    const swiper = this;
+    let slideIndex = index;
+    if (slideIndex < 0) slideIndex = 0;
+    const { params , snapGrid , slidesGrid , previousIndex , activeIndex , rtlTranslate: rtl , wrapperEl , enabled  } = swiper;
+    if (swiper.animating && params.preventInteractionOnTransition || !enabled && !internal && !initial || swiper.destroyed) return false;
+    const skip = Math.min(swiper.params.slidesPerGroupSkip, slideIndex);
+    let snapIndex = skip + Math.floor((slideIndex - skip) / swiper.params.slidesPerGroup);
+    if (snapIndex >= snapGrid.length) snapIndex = snapGrid.length - 1;
+    const translate = -snapGrid[snapIndex];
+    // Normalize slideIndex
+    if (params.normalizeSlideIndex) for(let i = 0; i < slidesGrid.length; i += 1){
+        const normalizedTranslate = -Math.floor(translate * 100);
+        const normalizedGrid = Math.floor(slidesGrid[i] * 100);
+        const normalizedGridNext = Math.floor(slidesGrid[i + 1] * 100);
+        if (typeof slidesGrid[i + 1] !== "undefined") {
+            if (normalizedTranslate >= normalizedGrid && normalizedTranslate < normalizedGridNext - (normalizedGridNext - normalizedGrid) / 2) slideIndex = i;
+            else if (normalizedTranslate >= normalizedGrid && normalizedTranslate < normalizedGridNext) slideIndex = i + 1;
+        } else if (normalizedTranslate >= normalizedGrid) slideIndex = i;
+    }
+    // Directions locks
+    if (swiper.initialized && slideIndex !== activeIndex) {
+        if (!swiper.allowSlideNext && (rtl ? translate > swiper.translate && translate > swiper.minTranslate() : translate < swiper.translate && translate < swiper.minTranslate())) return false;
+        if (!swiper.allowSlidePrev && translate > swiper.translate && translate > swiper.maxTranslate()) {
+            if ((activeIndex || 0) !== slideIndex) return false;
+        }
+    }
+    if (slideIndex !== (previousIndex || 0) && runCallbacks) swiper.emit("beforeSlideChangeStart");
+    // Update progress
+    swiper.updateProgress(translate);
+    let direction;
+    if (slideIndex > activeIndex) direction = "next";
+    else if (slideIndex < activeIndex) direction = "prev";
+    else direction = "reset";
+    // Update Index
+    if (rtl && -translate === swiper.translate || !rtl && translate === swiper.translate) {
+        swiper.updateActiveIndex(slideIndex);
+        // Update Height
+        if (params.autoHeight) swiper.updateAutoHeight();
+        swiper.updateSlidesClasses();
+        if (params.effect !== "slide") swiper.setTranslate(translate);
+        if (direction !== "reset") {
+            swiper.transitionStart(runCallbacks, direction);
+            swiper.transitionEnd(runCallbacks, direction);
+        }
+        return false;
+    }
+    if (params.cssMode) {
+        const isH = swiper.isHorizontal();
+        const t = rtl ? translate : -translate;
+        if (speed === 0) {
+            const isVirtual = swiper.virtual && swiper.params.virtual.enabled;
+            if (isVirtual) {
+                swiper.wrapperEl.style.scrollSnapType = "none";
+                swiper._immediateVirtual = true;
+            }
+            if (isVirtual && !swiper._cssModeVirtualInitialSet && swiper.params.initialSlide > 0) {
+                swiper._cssModeVirtualInitialSet = true;
+                requestAnimationFrame(()=>{
+                    wrapperEl[isH ? "scrollLeft" : "scrollTop"] = t;
+                });
+            } else wrapperEl[isH ? "scrollLeft" : "scrollTop"] = t;
+            if (isVirtual) requestAnimationFrame(()=>{
+                swiper.wrapperEl.style.scrollSnapType = "";
+                swiper._immediateVirtual = false;
+            });
+        } else {
+            if (!swiper.support.smoothScroll) {
+                (0, _utilsMjs.r)({
+                    swiper,
+                    targetPosition: t,
+                    side: isH ? "left" : "top"
+                });
+                return true;
+            }
+            wrapperEl.scrollTo({
+                [isH ? "left" : "top"]: t,
+                behavior: "smooth"
+            });
+        }
+        return true;
+    }
+    swiper.setTransition(speed);
+    swiper.setTranslate(translate);
+    swiper.updateActiveIndex(slideIndex);
+    swiper.updateSlidesClasses();
+    swiper.emit("beforeTransitionStart", speed, internal);
+    swiper.transitionStart(runCallbacks, direction);
+    if (speed === 0) swiper.transitionEnd(runCallbacks, direction);
+    else if (!swiper.animating) {
+        swiper.animating = true;
+        if (!swiper.onSlideToWrapperTransitionEnd) swiper.onSlideToWrapperTransitionEnd = function transitionEnd(e) {
+            if (!swiper || swiper.destroyed) return;
+            if (e.target !== this) return;
+            swiper.wrapperEl.removeEventListener("transitionend", swiper.onSlideToWrapperTransitionEnd);
+            swiper.onSlideToWrapperTransitionEnd = null;
+            delete swiper.onSlideToWrapperTransitionEnd;
+            swiper.transitionEnd(runCallbacks, direction);
+        };
+        swiper.wrapperEl.addEventListener("transitionend", swiper.onSlideToWrapperTransitionEnd);
+    }
+    return true;
+}
+function slideToLoop(index, speed, runCallbacks, internal) {
+    if (index === void 0) index = 0;
+    if (speed === void 0) speed = this.params.speed;
+    if (runCallbacks === void 0) runCallbacks = true;
+    if (typeof index === "string") {
+        const indexAsNumber = parseInt(index, 10);
+        index = indexAsNumber;
+    }
+    const swiper = this;
+    if (swiper.destroyed) return;
+    const gridEnabled = swiper.grid && swiper.params.grid && swiper.params.grid.rows > 1;
+    let newIndex = index;
+    if (swiper.params.loop) {
+        if (swiper.virtual && swiper.params.virtual.enabled) // eslint-disable-next-line
+        newIndex = newIndex + swiper.virtual.slidesBefore;
+        else {
+            let targetSlideIndex;
+            if (gridEnabled) {
+                const slideIndex = newIndex * swiper.params.grid.rows;
+                targetSlideIndex = swiper.slides.filter((slideEl)=>slideEl.getAttribute("data-swiper-slide-index") * 1 === slideIndex)[0].column;
+            } else targetSlideIndex = swiper.getSlideIndexByData(newIndex);
+            const cols = gridEnabled ? Math.ceil(swiper.slides.length / swiper.params.grid.rows) : swiper.slides.length;
+            const { centeredSlides  } = swiper.params;
+            let slidesPerView = swiper.params.slidesPerView;
+            if (slidesPerView === "auto") slidesPerView = swiper.slidesPerViewDynamic();
+            else {
+                slidesPerView = Math.ceil(parseFloat(swiper.params.slidesPerView, 10));
+                if (centeredSlides && slidesPerView % 2 === 0) slidesPerView = slidesPerView + 1;
+            }
+            let needLoopFix = cols - targetSlideIndex < slidesPerView;
+            if (centeredSlides) needLoopFix = needLoopFix || targetSlideIndex < Math.ceil(slidesPerView / 2);
+            if (needLoopFix) {
+                const direction = centeredSlides ? targetSlideIndex < swiper.activeIndex ? "prev" : "next" : targetSlideIndex - swiper.activeIndex - 1 < swiper.params.slidesPerView ? "next" : "prev";
+                swiper.loopFix({
+                    direction,
+                    slideTo: true,
+                    activeSlideIndex: direction === "next" ? targetSlideIndex + 1 : targetSlideIndex - cols + 1,
+                    slideRealIndex: direction === "next" ? swiper.realIndex : undefined
+                });
+            }
+            if (gridEnabled) {
+                const slideIndex = newIndex * swiper.params.grid.rows;
+                newIndex = swiper.slides.filter((slideEl)=>slideEl.getAttribute("data-swiper-slide-index") * 1 === slideIndex)[0].column;
+            } else newIndex = swiper.getSlideIndexByData(newIndex);
+        }
+    }
+    requestAnimationFrame(()=>{
+        swiper.slideTo(newIndex, speed, runCallbacks, internal);
+    });
+    return swiper;
+}
+/* eslint no-unused-vars: "off" */ function slideNext(speed, runCallbacks, internal) {
+    if (speed === void 0) speed = this.params.speed;
+    if (runCallbacks === void 0) runCallbacks = true;
+    const swiper = this;
+    const { enabled , params , animating  } = swiper;
+    if (!enabled || swiper.destroyed) return swiper;
+    let perGroup = params.slidesPerGroup;
+    if (params.slidesPerView === "auto" && params.slidesPerGroup === 1 && params.slidesPerGroupAuto) perGroup = Math.max(swiper.slidesPerViewDynamic("current", true), 1);
+    const increment = swiper.activeIndex < params.slidesPerGroupSkip ? 1 : perGroup;
+    const isVirtual = swiper.virtual && params.virtual.enabled;
+    if (params.loop) {
+        if (animating && !isVirtual && params.loopPreventsSliding) return false;
+        swiper.loopFix({
+            direction: "next"
+        });
+        // eslint-disable-next-line
+        swiper._clientLeft = swiper.wrapperEl.clientLeft;
+        if (swiper.activeIndex === swiper.slides.length - 1 && params.cssMode) {
+            requestAnimationFrame(()=>{
+                swiper.slideTo(swiper.activeIndex + increment, speed, runCallbacks, internal);
+            });
+            return true;
+        }
+    }
+    if (params.rewind && swiper.isEnd) return swiper.slideTo(0, speed, runCallbacks, internal);
+    return swiper.slideTo(swiper.activeIndex + increment, speed, runCallbacks, internal);
+}
+/* eslint no-unused-vars: "off" */ function slidePrev(speed, runCallbacks, internal) {
+    if (speed === void 0) speed = this.params.speed;
+    if (runCallbacks === void 0) runCallbacks = true;
+    const swiper = this;
+    const { params , snapGrid , slidesGrid , rtlTranslate , enabled , animating  } = swiper;
+    if (!enabled || swiper.destroyed) return swiper;
+    const isVirtual = swiper.virtual && params.virtual.enabled;
+    if (params.loop) {
+        if (animating && !isVirtual && params.loopPreventsSliding) return false;
+        swiper.loopFix({
+            direction: "prev"
+        });
+        // eslint-disable-next-line
+        swiper._clientLeft = swiper.wrapperEl.clientLeft;
+    }
+    const translate = rtlTranslate ? swiper.translate : -swiper.translate;
+    function normalize(val) {
+        if (val < 0) return -Math.floor(Math.abs(val));
+        return Math.floor(val);
+    }
+    const normalizedTranslate = normalize(translate);
+    const normalizedSnapGrid = snapGrid.map((val)=>normalize(val));
+    let prevSnap = snapGrid[normalizedSnapGrid.indexOf(normalizedTranslate) - 1];
+    if (typeof prevSnap === "undefined" && params.cssMode) {
+        let prevSnapIndex;
+        snapGrid.forEach((snap, snapIndex)=>{
+            if (normalizedTranslate >= snap) // prevSnap = snap;
+            prevSnapIndex = snapIndex;
+        });
+        if (typeof prevSnapIndex !== "undefined") prevSnap = snapGrid[prevSnapIndex > 0 ? prevSnapIndex - 1 : prevSnapIndex];
+    }
+    let prevIndex = 0;
+    if (typeof prevSnap !== "undefined") {
+        prevIndex = slidesGrid.indexOf(prevSnap);
+        if (prevIndex < 0) prevIndex = swiper.activeIndex - 1;
+        if (params.slidesPerView === "auto" && params.slidesPerGroup === 1 && params.slidesPerGroupAuto) {
+            prevIndex = prevIndex - swiper.slidesPerViewDynamic("previous", true) + 1;
+            prevIndex = Math.max(prevIndex, 0);
+        }
+    }
+    if (params.rewind && swiper.isBeginning) {
+        const lastIndex = swiper.params.virtual && swiper.params.virtual.enabled && swiper.virtual ? swiper.virtual.slides.length - 1 : swiper.slides.length - 1;
+        return swiper.slideTo(lastIndex, speed, runCallbacks, internal);
+    } else if (params.loop && swiper.activeIndex === 0 && params.cssMode) {
+        requestAnimationFrame(()=>{
+            swiper.slideTo(prevIndex, speed, runCallbacks, internal);
+        });
+        return true;
+    }
+    return swiper.slideTo(prevIndex, speed, runCallbacks, internal);
+}
+/* eslint no-unused-vars: "off" */ function slideReset(speed, runCallbacks, internal) {
+    if (speed === void 0) speed = this.params.speed;
+    if (runCallbacks === void 0) runCallbacks = true;
+    const swiper = this;
+    if (swiper.destroyed) return;
+    return swiper.slideTo(swiper.activeIndex, speed, runCallbacks, internal);
+}
+/* eslint no-unused-vars: "off" */ function slideToClosest(speed, runCallbacks, internal, threshold) {
+    if (speed === void 0) speed = this.params.speed;
+    if (runCallbacks === void 0) runCallbacks = true;
+    if (threshold === void 0) threshold = 0.5;
+    const swiper = this;
+    if (swiper.destroyed) return;
+    let index = swiper.activeIndex;
+    const skip = Math.min(swiper.params.slidesPerGroupSkip, index);
+    const snapIndex = skip + Math.floor((index - skip) / swiper.params.slidesPerGroup);
+    const translate = swiper.rtlTranslate ? swiper.translate : -swiper.translate;
+    if (translate >= swiper.snapGrid[snapIndex]) {
+        // The current translate is on or after the current snap index, so the choice
+        // is between the current index and the one after it.
+        const currentSnap = swiper.snapGrid[snapIndex];
+        const nextSnap = swiper.snapGrid[snapIndex + 1];
+        if (translate - currentSnap > (nextSnap - currentSnap) * threshold) index += swiper.params.slidesPerGroup;
+    } else {
+        // The current translate is before the current snap index, so the choice
+        // is between the current index and the one before it.
+        const prevSnap = swiper.snapGrid[snapIndex - 1];
+        const currentSnap = swiper.snapGrid[snapIndex];
+        if (translate - prevSnap <= (currentSnap - prevSnap) * threshold) index -= swiper.params.slidesPerGroup;
+    }
+    index = Math.max(index, 0);
+    index = Math.min(index, swiper.slidesGrid.length - 1);
+    return swiper.slideTo(index, speed, runCallbacks, internal);
+}
+function slideToClickedSlide() {
+    const swiper = this;
+    if (swiper.destroyed) return;
+    const { params , slidesEl  } = swiper;
+    const slidesPerView = params.slidesPerView === "auto" ? swiper.slidesPerViewDynamic() : params.slidesPerView;
+    let slideToIndex = swiper.clickedIndex;
+    let realIndex;
+    const slideSelector = swiper.isElement ? `swiper-slide` : `.${params.slideClass}`;
+    if (params.loop) {
+        if (swiper.animating) return;
+        realIndex = parseInt(swiper.clickedSlide.getAttribute("data-swiper-slide-index"), 10);
+        if (params.centeredSlides) {
+            if (slideToIndex < swiper.loopedSlides - slidesPerView / 2 || slideToIndex > swiper.slides.length - swiper.loopedSlides + slidesPerView / 2) {
+                swiper.loopFix();
+                slideToIndex = swiper.getSlideIndex((0, _utilsMjs.e)(slidesEl, `${slideSelector}[data-swiper-slide-index="${realIndex}"]`)[0]);
+                (0, _utilsMjs.n)(()=>{
+                    swiper.slideTo(slideToIndex);
+                });
+            } else swiper.slideTo(slideToIndex);
+        } else if (slideToIndex > swiper.slides.length - slidesPerView) {
+            swiper.loopFix();
+            slideToIndex = swiper.getSlideIndex((0, _utilsMjs.e)(slidesEl, `${slideSelector}[data-swiper-slide-index="${realIndex}"]`)[0]);
+            (0, _utilsMjs.n)(()=>{
+                swiper.slideTo(slideToIndex);
+            });
+        } else swiper.slideTo(slideToIndex);
+    } else swiper.slideTo(slideToIndex);
+}
+var slide = {
+    slideTo,
+    slideToLoop,
+    slideNext,
+    slidePrev,
+    slideReset,
+    slideToClosest,
+    slideToClickedSlide
+};
+function loopCreate(slideRealIndex) {
+    const swiper = this;
+    const { params , slidesEl  } = swiper;
+    if (!params.loop || swiper.virtual && swiper.params.virtual.enabled) return;
+    const initSlides = ()=>{
+        const slides = (0, _utilsMjs.e)(slidesEl, `.${params.slideClass}, swiper-slide`);
+        slides.forEach((el, index)=>{
+            el.setAttribute("data-swiper-slide-index", index);
+        });
+    };
+    const gridEnabled = swiper.grid && params.grid && params.grid.rows > 1;
+    const slidesPerGroup = params.slidesPerGroup * (gridEnabled ? params.grid.rows : 1);
+    const shouldFillGroup = swiper.slides.length % slidesPerGroup !== 0;
+    const shouldFillGrid = gridEnabled && swiper.slides.length % params.grid.rows !== 0;
+    const addBlankSlides = (amountOfSlides)=>{
+        for(let i = 0; i < amountOfSlides; i += 1){
+            const slideEl = swiper.isElement ? (0, _utilsMjs.c)("swiper-slide", [
+                params.slideBlankClass
+            ]) : (0, _utilsMjs.c)("div", [
+                params.slideClass,
+                params.slideBlankClass
+            ]);
+            swiper.slidesEl.append(slideEl);
+        }
+    };
+    if (shouldFillGroup) {
+        if (params.loopAddBlankSlides) {
+            const slidesToAdd = slidesPerGroup - swiper.slides.length % slidesPerGroup;
+            addBlankSlides(slidesToAdd);
+            swiper.recalcSlides();
+            swiper.updateSlides();
+        } else (0, _utilsMjs.t)("Swiper Loop Warning: The number of slides is not even to slidesPerGroup, loop mode may not function properly. You need to add more slides (or make duplicates, or empty slides)");
+        initSlides();
+    } else if (shouldFillGrid) {
+        if (params.loopAddBlankSlides) {
+            const slidesToAdd = params.grid.rows - swiper.slides.length % params.grid.rows;
+            addBlankSlides(slidesToAdd);
+            swiper.recalcSlides();
+            swiper.updateSlides();
+        } else (0, _utilsMjs.t)("Swiper Loop Warning: The number of slides is not even to grid.rows, loop mode may not function properly. You need to add more slides (or make duplicates, or empty slides)");
+        initSlides();
+    } else initSlides();
+    swiper.loopFix({
+        slideRealIndex,
+        direction: params.centeredSlides ? undefined : "next"
+    });
+}
+function loopFix(_temp) {
+    let { slideRealIndex , slideTo =true , direction , setTranslate , activeSlideIndex , byController , byMousewheel  } = _temp === void 0 ? {} : _temp;
+    const swiper = this;
+    if (!swiper.params.loop) return;
+    swiper.emit("beforeLoopFix");
+    const { slides , allowSlidePrev , allowSlideNext , slidesEl , params  } = swiper;
+    const { centeredSlides  } = params;
+    swiper.allowSlidePrev = true;
+    swiper.allowSlideNext = true;
+    if (swiper.virtual && params.virtual.enabled) {
+        if (slideTo) {
+            if (!params.centeredSlides && swiper.snapIndex === 0) swiper.slideTo(swiper.virtual.slides.length, 0, false, true);
+            else if (params.centeredSlides && swiper.snapIndex < params.slidesPerView) swiper.slideTo(swiper.virtual.slides.length + swiper.snapIndex, 0, false, true);
+            else if (swiper.snapIndex === swiper.snapGrid.length - 1) swiper.slideTo(swiper.virtual.slidesBefore, 0, false, true);
+        }
+        swiper.allowSlidePrev = allowSlidePrev;
+        swiper.allowSlideNext = allowSlideNext;
+        swiper.emit("loopFix");
+        return;
+    }
+    let slidesPerView = params.slidesPerView;
+    if (slidesPerView === "auto") slidesPerView = swiper.slidesPerViewDynamic();
+    else {
+        slidesPerView = Math.ceil(parseFloat(params.slidesPerView, 10));
+        if (centeredSlides && slidesPerView % 2 === 0) slidesPerView = slidesPerView + 1;
+    }
+    const slidesPerGroup = params.slidesPerGroupAuto ? slidesPerView : params.slidesPerGroup;
+    let loopedSlides = slidesPerGroup;
+    if (loopedSlides % slidesPerGroup !== 0) loopedSlides += slidesPerGroup - loopedSlides % slidesPerGroup;
+    loopedSlides += params.loopAdditionalSlides;
+    swiper.loopedSlides = loopedSlides;
+    const gridEnabled = swiper.grid && params.grid && params.grid.rows > 1;
+    if (slides.length < slidesPerView + loopedSlides) (0, _utilsMjs.t)("Swiper Loop Warning: The number of slides is not enough for loop mode, it will be disabled and not function properly. You need to add more slides (or make duplicates) or lower the values of slidesPerView and slidesPerGroup parameters");
+    else if (gridEnabled && params.grid.fill === "row") (0, _utilsMjs.t)("Swiper Loop Warning: Loop mode is not compatible with grid.fill = `row`");
+    const prependSlidesIndexes = [];
+    const appendSlidesIndexes = [];
+    let activeIndex = swiper.activeIndex;
+    if (typeof activeSlideIndex === "undefined") activeSlideIndex = swiper.getSlideIndex(slides.filter((el)=>el.classList.contains(params.slideActiveClass))[0]);
+    else activeIndex = activeSlideIndex;
+    const isNext = direction === "next" || !direction;
+    const isPrev = direction === "prev" || !direction;
+    let slidesPrepended = 0;
+    let slidesAppended = 0;
+    const cols = gridEnabled ? Math.ceil(slides.length / params.grid.rows) : slides.length;
+    const activeColIndex = gridEnabled ? slides[activeSlideIndex].column : activeSlideIndex;
+    const activeColIndexWithShift = activeColIndex + (centeredSlides && typeof setTranslate === "undefined" ? -slidesPerView / 2 + 0.5 : 0);
+    // prepend last slides before start
+    if (activeColIndexWithShift < loopedSlides) {
+        slidesPrepended = Math.max(loopedSlides - activeColIndexWithShift, slidesPerGroup);
+        for(let i = 0; i < loopedSlides - activeColIndexWithShift; i += 1){
+            const index = i - Math.floor(i / cols) * cols;
+            if (gridEnabled) {
+                const colIndexToPrepend = cols - index - 1;
+                for(let i = slides.length - 1; i >= 0; i -= 1)if (slides[i].column === colIndexToPrepend) prependSlidesIndexes.push(i);
+            // slides.forEach((slide, slideIndex) => {
+            //   if (slide.column === colIndexToPrepend) prependSlidesIndexes.push(slideIndex);
+            // });
+            } else prependSlidesIndexes.push(cols - index - 1);
+        }
+    } else if (activeColIndexWithShift + slidesPerView > cols - loopedSlides) {
+        slidesAppended = Math.max(activeColIndexWithShift - (cols - loopedSlides * 2), slidesPerGroup);
+        for(let i = 0; i < slidesAppended; i += 1){
+            const index = i - Math.floor(i / cols) * cols;
+            if (gridEnabled) slides.forEach((slide, slideIndex)=>{
+                if (slide.column === index) appendSlidesIndexes.push(slideIndex);
+            });
+            else appendSlidesIndexes.push(index);
+        }
+    }
+    swiper.__preventObserver__ = true;
+    requestAnimationFrame(()=>{
+        swiper.__preventObserver__ = false;
+    });
+    if (isPrev) prependSlidesIndexes.forEach((index)=>{
+        slides[index].swiperLoopMoveDOM = true;
+        slidesEl.prepend(slides[index]);
+        slides[index].swiperLoopMoveDOM = false;
+    });
+    if (isNext) appendSlidesIndexes.forEach((index)=>{
+        slides[index].swiperLoopMoveDOM = true;
+        slidesEl.append(slides[index]);
+        slides[index].swiperLoopMoveDOM = false;
+    });
+    swiper.recalcSlides();
+    if (params.slidesPerView === "auto") swiper.updateSlides();
+    else if (gridEnabled && (prependSlidesIndexes.length > 0 && isPrev || appendSlidesIndexes.length > 0 && isNext)) swiper.slides.forEach((slide, slideIndex)=>{
+        swiper.grid.updateSlide(slideIndex, slide, swiper.slides);
+    });
+    if (params.watchSlidesProgress) swiper.updateSlidesOffset();
+    if (slideTo) {
+        if (prependSlidesIndexes.length > 0 && isPrev) {
+            if (typeof slideRealIndex === "undefined") {
+                const currentSlideTranslate = swiper.slidesGrid[activeIndex];
+                const newSlideTranslate = swiper.slidesGrid[activeIndex + slidesPrepended];
+                const diff = newSlideTranslate - currentSlideTranslate;
+                if (byMousewheel) swiper.setTranslate(swiper.translate - diff);
+                else {
+                    swiper.slideTo(activeIndex + slidesPrepended, 0, false, true);
+                    if (setTranslate) {
+                        swiper.touchEventsData.startTranslate = swiper.touchEventsData.startTranslate - diff;
+                        swiper.touchEventsData.currentTranslate = swiper.touchEventsData.currentTranslate - diff;
                     }
                 }
-                // now convert data from buffer into rgba
-                // first red, then green, then blue, then exponent (alpha)
-                const l = scanline_width; //scanline_buffer.byteLength;
-                for(let i = 0; i < l; i++){
-                    let off = 0;
-                    data_rgba[offset] = scanline_buffer[i + off];
-                    off += scanline_width; //1;
-                    data_rgba[offset + 1] = scanline_buffer[i + off];
-                    off += scanline_width; //1;
-                    data_rgba[offset + 2] = scanline_buffer[i + off];
-                    off += scanline_width; //1;
-                    data_rgba[offset + 3] = scanline_buffer[i + off];
-                    offset += 4;
+            } else if (setTranslate) {
+                const shift = gridEnabled ? prependSlidesIndexes.length / params.grid.rows : prependSlidesIndexes.length;
+                swiper.slideTo(swiper.activeIndex + shift, 0, false, true);
+                swiper.touchEventsData.currentTranslate = swiper.translate;
+            }
+        } else if (appendSlidesIndexes.length > 0 && isNext) {
+            if (typeof slideRealIndex === "undefined") {
+                const currentSlideTranslate = swiper.slidesGrid[activeIndex];
+                const newSlideTranslate = swiper.slidesGrid[activeIndex - slidesAppended];
+                const diff = newSlideTranslate - currentSlideTranslate;
+                if (byMousewheel) swiper.setTranslate(swiper.translate - diff);
+                else {
+                    swiper.slideTo(activeIndex - slidesAppended, 0, false, true);
+                    if (setTranslate) {
+                        swiper.touchEventsData.startTranslate = swiper.touchEventsData.startTranslate - diff;
+                        swiper.touchEventsData.currentTranslate = swiper.touchEventsData.currentTranslate - diff;
+                    }
                 }
-                num_scanlines--;
+            } else {
+                const shift = gridEnabled ? appendSlidesIndexes.length / params.grid.rows : appendSlidesIndexes.length;
+                swiper.slideTo(swiper.activeIndex - shift, 0, false, true);
             }
-            return data_rgba;
-        };
-        const RGBEByteToRGBFloat = function(sourceArray, sourceOffset, destArray, destOffset) {
-            const e = sourceArray[sourceOffset + 3];
-            const scale = Math.pow(2.0, e - 128.0) / 255.0;
-            destArray[destOffset + 0] = sourceArray[sourceOffset + 0] * scale;
-            destArray[destOffset + 1] = sourceArray[sourceOffset + 1] * scale;
-            destArray[destOffset + 2] = sourceArray[sourceOffset + 2] * scale;
-            destArray[destOffset + 3] = 1;
-        };
-        const RGBEByteToRGBHalf = function(sourceArray, sourceOffset, destArray, destOffset) {
-            const e = sourceArray[sourceOffset + 3];
-            const scale = Math.pow(2.0, e - 128.0) / 255.0;
-            // clamping to 65504, the maximum representable value in float16
-            destArray[destOffset + 0] = (0, _three.DataUtils).toHalfFloat(Math.min(sourceArray[sourceOffset + 0] * scale, 65504));
-            destArray[destOffset + 1] = (0, _three.DataUtils).toHalfFloat(Math.min(sourceArray[sourceOffset + 1] * scale, 65504));
-            destArray[destOffset + 2] = (0, _three.DataUtils).toHalfFloat(Math.min(sourceArray[sourceOffset + 2] * scale, 65504));
-            destArray[destOffset + 3] = (0, _three.DataUtils).toHalfFloat(1);
-        };
-        const byteArray = new Uint8Array(buffer);
-        byteArray.pos = 0;
-        const rgbe_header_info = RGBE_ReadHeader(byteArray);
-        const w = rgbe_header_info.width, h = rgbe_header_info.height, image_rgba_data = RGBE_ReadPixels_RLE(byteArray.subarray(byteArray.pos), w, h);
-        let data, type;
-        let numElements;
-        switch(this.type){
-            case 0, _three.FloatType:
-                numElements = image_rgba_data.length / 4;
-                const floatArray = new Float32Array(numElements * 4);
-                for(let j = 0; j < numElements; j++)RGBEByteToRGBFloat(image_rgba_data, j * 4, floatArray, j * 4);
-                data = floatArray;
-                type = (0, _three.FloatType);
-                break;
-            case 0, _three.HalfFloatType:
-                numElements = image_rgba_data.length / 4;
-                const halfArray = new Uint16Array(numElements * 4);
-                for(let j = 0; j < numElements; j++)RGBEByteToRGBHalf(image_rgba_data, j * 4, halfArray, j * 4);
-                data = halfArray;
-                type = (0, _three.HalfFloatType);
-                break;
-            default:
-                throw new Error("THREE.RGBELoader: Unsupported type: " + this.type);
         }
-        return {
-            width: w,
-            height: h,
-            data: data,
-            header: rgbe_header_info.string,
-            gamma: rgbe_header_info.gamma,
-            exposure: rgbe_header_info.exposure,
-            type: type
+    }
+    swiper.allowSlidePrev = allowSlidePrev;
+    swiper.allowSlideNext = allowSlideNext;
+    if (swiper.controller && swiper.controller.control && !byController) {
+        const loopParams = {
+            slideRealIndex,
+            direction,
+            setTranslate,
+            activeSlideIndex,
+            byController: true
         };
+        if (Array.isArray(swiper.controller.control)) swiper.controller.control.forEach((c)=>{
+            if (!c.destroyed && c.params.loop) c.loopFix({
+                ...loopParams,
+                slideTo: c.params.slidesPerView === params.slidesPerView ? slideTo : false
+            });
+        });
+        else if (swiper.controller.control instanceof swiper.constructor && swiper.controller.control.params.loop) swiper.controller.control.loopFix({
+            ...loopParams,
+            slideTo: swiper.controller.control.params.slidesPerView === params.slidesPerView ? slideTo : false
+        });
     }
-    setDataType(value) {
-        this.type = value;
-        return this;
+    swiper.emit("loopFix");
+}
+function loopDestroy() {
+    const swiper = this;
+    const { params , slidesEl  } = swiper;
+    if (!params.loop || swiper.virtual && swiper.params.virtual.enabled) return;
+    swiper.recalcSlides();
+    const newSlidesOrder = [];
+    swiper.slides.forEach((slideEl)=>{
+        const index = typeof slideEl.swiperSlideIndex === "undefined" ? slideEl.getAttribute("data-swiper-slide-index") * 1 : slideEl.swiperSlideIndex;
+        newSlidesOrder[index] = slideEl;
+    });
+    swiper.slides.forEach((slideEl)=>{
+        slideEl.removeAttribute("data-swiper-slide-index");
+    });
+    newSlidesOrder.forEach((slideEl)=>{
+        slidesEl.append(slideEl);
+    });
+    swiper.recalcSlides();
+    swiper.slideTo(swiper.realIndex, 0);
+}
+var loop = {
+    loopCreate,
+    loopFix,
+    loopDestroy
+};
+function setGrabCursor(moving) {
+    const swiper = this;
+    if (!swiper.params.simulateTouch || swiper.params.watchOverflow && swiper.isLocked || swiper.params.cssMode) return;
+    const el = swiper.params.touchEventsTarget === "container" ? swiper.el : swiper.wrapperEl;
+    if (swiper.isElement) swiper.__preventObserver__ = true;
+    el.style.cursor = "move";
+    el.style.cursor = moving ? "grabbing" : "grab";
+    if (swiper.isElement) requestAnimationFrame(()=>{
+        swiper.__preventObserver__ = false;
+    });
+}
+function unsetGrabCursor() {
+    const swiper = this;
+    if (swiper.params.watchOverflow && swiper.isLocked || swiper.params.cssMode) return;
+    if (swiper.isElement) swiper.__preventObserver__ = true;
+    swiper[swiper.params.touchEventsTarget === "container" ? "el" : "wrapperEl"].style.cursor = "";
+    if (swiper.isElement) requestAnimationFrame(()=>{
+        swiper.__preventObserver__ = false;
+    });
+}
+var grabCursor = {
+    setGrabCursor,
+    unsetGrabCursor
+};
+// Modified from https://stackoverflow.com/questions/54520554/custom-element-getrootnode-closest-function-crossing-multiple-parent-shadowd
+function closestElement(selector, base) {
+    if (base === void 0) base = this;
+    function __closestFrom(el) {
+        if (!el || el === (0, _ssrWindowEsmMjs.g)() || el === (0, _ssrWindowEsmMjs.a)()) return null;
+        if (el.assignedSlot) el = el.assignedSlot;
+        const found = el.closest(selector);
+        if (!found && !el.getRootNode) return null;
+        return found || __closestFrom(el.getRootNode().host);
     }
-    load(url, onLoad, onProgress, onError) {
-        function onLoadCallback(texture, texData) {
-            switch(texture.type){
-                case 0, _three.FloatType:
-                case 0, _three.HalfFloatType:
-                    texture.colorSpace = (0, _three.LinearSRGBColorSpace);
-                    texture.minFilter = (0, _three.LinearFilter);
-                    texture.magFilter = (0, _three.LinearFilter);
-                    texture.generateMipmaps = false;
-                    texture.flipY = true;
-                    break;
+    return __closestFrom(base);
+}
+function preventEdgeSwipe(swiper, event, startX) {
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const { params  } = swiper;
+    const edgeSwipeDetection = params.edgeSwipeDetection;
+    const edgeSwipeThreshold = params.edgeSwipeThreshold;
+    if (edgeSwipeDetection && (startX <= edgeSwipeThreshold || startX >= window1.innerWidth - edgeSwipeThreshold)) {
+        if (edgeSwipeDetection === "prevent") {
+            event.preventDefault();
+            return true;
+        }
+        return false;
+    }
+    return true;
+}
+function onTouchStart(event) {
+    const swiper = this;
+    const document1 = (0, _ssrWindowEsmMjs.g)();
+    let e = event;
+    if (e.originalEvent) e = e.originalEvent;
+    const data = swiper.touchEventsData;
+    if (e.type === "pointerdown") {
+        if (data.pointerId !== null && data.pointerId !== e.pointerId) return;
+        data.pointerId = e.pointerId;
+    } else if (e.type === "touchstart" && e.targetTouches.length === 1) data.touchId = e.targetTouches[0].identifier;
+    if (e.type === "touchstart") {
+        // don't proceed touch event
+        preventEdgeSwipe(swiper, e, e.targetTouches[0].pageX);
+        return;
+    }
+    const { params , touches , enabled  } = swiper;
+    if (!enabled) return;
+    if (!params.simulateTouch && e.pointerType === "mouse") return;
+    if (swiper.animating && params.preventInteractionOnTransition) return;
+    if (!swiper.animating && params.cssMode && params.loop) swiper.loopFix();
+    let targetEl = e.target;
+    if (params.touchEventsTarget === "wrapper") {
+        if (!swiper.wrapperEl.contains(targetEl)) return;
+    }
+    if ("which" in e && e.which === 3) return;
+    if ("button" in e && e.button > 0) return;
+    if (data.isTouched && data.isMoved) return;
+    // change target el for shadow root component
+    const swipingClassHasValue = !!params.noSwipingClass && params.noSwipingClass !== "";
+    // eslint-disable-next-line
+    const eventPath = e.composedPath ? e.composedPath() : e.path;
+    if (swipingClassHasValue && e.target && e.target.shadowRoot && eventPath) targetEl = eventPath[0];
+    const noSwipingSelector = params.noSwipingSelector ? params.noSwipingSelector : `.${params.noSwipingClass}`;
+    const isTargetShadow = !!(e.target && e.target.shadowRoot);
+    // use closestElement for shadow root element to get the actual closest for nested shadow root element
+    if (params.noSwiping && (isTargetShadow ? closestElement(noSwipingSelector, targetEl) : targetEl.closest(noSwipingSelector))) {
+        swiper.allowClick = true;
+        return;
+    }
+    if (params.swipeHandler) {
+        if (!targetEl.closest(params.swipeHandler)) return;
+    }
+    touches.currentX = e.pageX;
+    touches.currentY = e.pageY;
+    const startX = touches.currentX;
+    const startY = touches.currentY;
+    // Do NOT start if iOS edge swipe is detected. Otherwise iOS app cannot swipe-to-go-back anymore
+    if (!preventEdgeSwipe(swiper, e, startX)) return;
+    Object.assign(data, {
+        isTouched: true,
+        isMoved: false,
+        allowTouchCallbacks: true,
+        isScrolling: undefined,
+        startMoving: undefined
+    });
+    touches.startX = startX;
+    touches.startY = startY;
+    data.touchStartTime = (0, _utilsMjs.d)();
+    swiper.allowClick = true;
+    swiper.updateSize();
+    swiper.swipeDirection = undefined;
+    if (params.threshold > 0) data.allowThresholdMove = false;
+    let preventDefault = true;
+    if (targetEl.matches(data.focusableElements)) {
+        preventDefault = false;
+        if (targetEl.nodeName === "SELECT") data.isTouched = false;
+    }
+    if (document1.activeElement && document1.activeElement.matches(data.focusableElements) && document1.activeElement !== targetEl) document1.activeElement.blur();
+    const shouldPreventDefault = preventDefault && swiper.allowTouchMove && params.touchStartPreventDefault;
+    if ((params.touchStartForcePreventDefault || shouldPreventDefault) && !targetEl.isContentEditable) e.preventDefault();
+    if (params.freeMode && params.freeMode.enabled && swiper.freeMode && swiper.animating && !params.cssMode) swiper.freeMode.onTouchStart();
+    swiper.emit("touchStart", e);
+}
+function onTouchMove(event) {
+    const document1 = (0, _ssrWindowEsmMjs.g)();
+    const swiper = this;
+    const data = swiper.touchEventsData;
+    const { params , touches , rtlTranslate: rtl , enabled  } = swiper;
+    if (!enabled) return;
+    if (!params.simulateTouch && event.pointerType === "mouse") return;
+    let e = event;
+    if (e.originalEvent) e = e.originalEvent;
+    if (e.type === "pointermove") {
+        if (data.touchId !== null) return; // return from pointer if we use touch
+        const id = e.pointerId;
+        if (id !== data.pointerId) return;
+    }
+    let targetTouch;
+    if (e.type === "touchmove") {
+        targetTouch = [
+            ...e.changedTouches
+        ].filter((t)=>t.identifier === data.touchId)[0];
+        if (!targetTouch || targetTouch.identifier !== data.touchId) return;
+    } else targetTouch = e;
+    if (!data.isTouched) {
+        if (data.startMoving && data.isScrolling) swiper.emit("touchMoveOpposite", e);
+        return;
+    }
+    const pageX = targetTouch.pageX;
+    const pageY = targetTouch.pageY;
+    if (e.preventedByNestedSwiper) {
+        touches.startX = pageX;
+        touches.startY = pageY;
+        return;
+    }
+    if (!swiper.allowTouchMove) {
+        if (!e.target.matches(data.focusableElements)) swiper.allowClick = false;
+        if (data.isTouched) {
+            Object.assign(touches, {
+                startX: pageX,
+                startY: pageY,
+                currentX: pageX,
+                currentY: pageY
+            });
+            data.touchStartTime = (0, _utilsMjs.d)();
+        }
+        return;
+    }
+    if (params.touchReleaseOnEdges && !params.loop) {
+        if (swiper.isVertical()) // Vertical
+        {
+            if (pageY < touches.startY && swiper.translate <= swiper.maxTranslate() || pageY > touches.startY && swiper.translate >= swiper.minTranslate()) {
+                data.isTouched = false;
+                data.isMoved = false;
+                return;
             }
-            if (onLoad) onLoad(texture, texData);
+        } else if (pageX < touches.startX && swiper.translate <= swiper.maxTranslate() || pageX > touches.startX && swiper.translate >= swiper.minTranslate()) return;
+    }
+    if (document1.activeElement) {
+        if (e.target === document1.activeElement && e.target.matches(data.focusableElements)) {
+            data.isMoved = true;
+            swiper.allowClick = false;
+            return;
         }
-        return super.load(url, onLoadCallback, onProgress, onError);
+    }
+    if (data.allowTouchCallbacks) swiper.emit("touchMove", e);
+    touches.previousX = touches.currentX;
+    touches.previousY = touches.currentY;
+    touches.currentX = pageX;
+    touches.currentY = pageY;
+    const diffX = touches.currentX - touches.startX;
+    const diffY = touches.currentY - touches.startY;
+    if (swiper.params.threshold && Math.sqrt(diffX ** 2 + diffY ** 2) < swiper.params.threshold) return;
+    if (typeof data.isScrolling === "undefined") {
+        let touchAngle;
+        if (swiper.isHorizontal() && touches.currentY === touches.startY || swiper.isVertical() && touches.currentX === touches.startX) data.isScrolling = false;
+        else // eslint-disable-next-line
+        if (diffX * diffX + diffY * diffY >= 25) {
+            touchAngle = Math.atan2(Math.abs(diffY), Math.abs(diffX)) * 180 / Math.PI;
+            data.isScrolling = swiper.isHorizontal() ? touchAngle > params.touchAngle : 90 - touchAngle > params.touchAngle;
+        }
+    }
+    if (data.isScrolling) swiper.emit("touchMoveOpposite", e);
+    if (typeof data.startMoving === "undefined") {
+        if (touches.currentX !== touches.startX || touches.currentY !== touches.startY) data.startMoving = true;
+    }
+    if (data.isScrolling) {
+        data.isTouched = false;
+        return;
+    }
+    if (!data.startMoving) return;
+    swiper.allowClick = false;
+    if (!params.cssMode && e.cancelable) e.preventDefault();
+    if (params.touchMoveStopPropagation && !params.nested) e.stopPropagation();
+    let diff = swiper.isHorizontal() ? diffX : diffY;
+    let touchesDiff = swiper.isHorizontal() ? touches.currentX - touches.previousX : touches.currentY - touches.previousY;
+    if (params.oneWayMovement) {
+        diff = Math.abs(diff) * (rtl ? 1 : -1);
+        touchesDiff = Math.abs(touchesDiff) * (rtl ? 1 : -1);
+    }
+    touches.diff = diff;
+    diff *= params.touchRatio;
+    if (rtl) {
+        diff = -diff;
+        touchesDiff = -touchesDiff;
+    }
+    const prevTouchesDirection = swiper.touchesDirection;
+    swiper.swipeDirection = diff > 0 ? "prev" : "next";
+    swiper.touchesDirection = touchesDiff > 0 ? "prev" : "next";
+    const isLoop = swiper.params.loop && !params.cssMode;
+    const allowLoopFix = swiper.touchesDirection === "next" && swiper.allowSlideNext || swiper.touchesDirection === "prev" && swiper.allowSlidePrev;
+    if (!data.isMoved) {
+        if (isLoop && allowLoopFix) swiper.loopFix({
+            direction: swiper.swipeDirection
+        });
+        data.startTranslate = swiper.getTranslate();
+        swiper.setTransition(0);
+        if (swiper.animating) {
+            const evt = new window.CustomEvent("transitionend", {
+                bubbles: true,
+                cancelable: true
+            });
+            swiper.wrapperEl.dispatchEvent(evt);
+        }
+        data.allowMomentumBounce = false;
+        // Grab Cursor
+        if (params.grabCursor && (swiper.allowSlideNext === true || swiper.allowSlidePrev === true)) swiper.setGrabCursor(true);
+        swiper.emit("sliderFirstMove", e);
+    }
+    let loopFixed;
+    new Date().getTime();
+    if (data.isMoved && data.allowThresholdMove && prevTouchesDirection !== swiper.touchesDirection && isLoop && allowLoopFix && Math.abs(diff) >= 1) {
+        Object.assign(touches, {
+            startX: pageX,
+            startY: pageY,
+            currentX: pageX,
+            currentY: pageY,
+            startTranslate: data.currentTranslate
+        });
+        data.loopSwapReset = true;
+        data.startTranslate = data.currentTranslate;
+        return;
+    }
+    swiper.emit("sliderMove", e);
+    data.isMoved = true;
+    data.currentTranslate = diff + data.startTranslate;
+    let disableParentSwiper = true;
+    let resistanceRatio = params.resistanceRatio;
+    if (params.touchReleaseOnEdges) resistanceRatio = 0;
+    if (diff > 0) {
+        if (isLoop && allowLoopFix && !loopFixed && data.allowThresholdMove && data.currentTranslate > (params.centeredSlides ? swiper.minTranslate() - swiper.slidesSizesGrid[swiper.activeIndex + 1] : swiper.minTranslate())) swiper.loopFix({
+            direction: "prev",
+            setTranslate: true,
+            activeSlideIndex: 0
+        });
+        if (data.currentTranslate > swiper.minTranslate()) {
+            disableParentSwiper = false;
+            if (params.resistance) data.currentTranslate = swiper.minTranslate() - 1 + (-swiper.minTranslate() + data.startTranslate + diff) ** resistanceRatio;
+        }
+    } else if (diff < 0) {
+        if (isLoop && allowLoopFix && !loopFixed && data.allowThresholdMove && data.currentTranslate < (params.centeredSlides ? swiper.maxTranslate() + swiper.slidesSizesGrid[swiper.slidesSizesGrid.length - 1] : swiper.maxTranslate())) swiper.loopFix({
+            direction: "next",
+            setTranslate: true,
+            activeSlideIndex: swiper.slides.length - (params.slidesPerView === "auto" ? swiper.slidesPerViewDynamic() : Math.ceil(parseFloat(params.slidesPerView, 10)))
+        });
+        if (data.currentTranslate < swiper.maxTranslate()) {
+            disableParentSwiper = false;
+            if (params.resistance) data.currentTranslate = swiper.maxTranslate() + 1 - (swiper.maxTranslate() - data.startTranslate - diff) ** resistanceRatio;
+        }
+    }
+    if (disableParentSwiper) e.preventedByNestedSwiper = true;
+    // Directions locks
+    if (!swiper.allowSlideNext && swiper.swipeDirection === "next" && data.currentTranslate < data.startTranslate) data.currentTranslate = data.startTranslate;
+    if (!swiper.allowSlidePrev && swiper.swipeDirection === "prev" && data.currentTranslate > data.startTranslate) data.currentTranslate = data.startTranslate;
+    if (!swiper.allowSlidePrev && !swiper.allowSlideNext) data.currentTranslate = data.startTranslate;
+    // Threshold
+    if (params.threshold > 0) {
+        if (Math.abs(diff) > params.threshold || data.allowThresholdMove) {
+            if (!data.allowThresholdMove) {
+                data.allowThresholdMove = true;
+                touches.startX = touches.currentX;
+                touches.startY = touches.currentY;
+                data.currentTranslate = data.startTranslate;
+                touches.diff = swiper.isHorizontal() ? touches.currentX - touches.startX : touches.currentY - touches.startY;
+                return;
+            }
+        } else {
+            data.currentTranslate = data.startTranslate;
+            return;
+        }
+    }
+    if (!params.followFinger || params.cssMode) return;
+    // Update active index in free mode
+    if (params.freeMode && params.freeMode.enabled && swiper.freeMode || params.watchSlidesProgress) {
+        swiper.updateActiveIndex();
+        swiper.updateSlidesClasses();
+    }
+    if (params.freeMode && params.freeMode.enabled && swiper.freeMode) swiper.freeMode.onTouchMove();
+    // Update progress
+    swiper.updateProgress(data.currentTranslate);
+    // Update translate
+    swiper.setTranslate(data.currentTranslate);
+}
+function onTouchEnd(event) {
+    const swiper = this;
+    const data = swiper.touchEventsData;
+    let e = event;
+    if (e.originalEvent) e = e.originalEvent;
+    let targetTouch;
+    const isTouchEvent = e.type === "touchend" || e.type === "touchcancel";
+    if (!isTouchEvent) {
+        if (data.touchId !== null) return; // return from pointer if we use touch
+        if (e.pointerId !== data.pointerId) return;
+        targetTouch = e;
+    } else {
+        targetTouch = [
+            ...e.changedTouches
+        ].filter((t)=>t.identifier === data.touchId)[0];
+        if (!targetTouch || targetTouch.identifier !== data.touchId) return;
+    }
+    if ([
+        "pointercancel",
+        "pointerout",
+        "pointerleave",
+        "contextmenu"
+    ].includes(e.type)) {
+        const proceed = [
+            "pointercancel",
+            "contextmenu"
+        ].includes(e.type) && (swiper.browser.isSafari || swiper.browser.isWebView);
+        if (!proceed) return;
+    }
+    data.pointerId = null;
+    data.touchId = null;
+    const { params , touches , rtlTranslate: rtl , slidesGrid , enabled  } = swiper;
+    if (!enabled) return;
+    if (!params.simulateTouch && e.pointerType === "mouse") return;
+    if (data.allowTouchCallbacks) swiper.emit("touchEnd", e);
+    data.allowTouchCallbacks = false;
+    if (!data.isTouched) {
+        if (data.isMoved && params.grabCursor) swiper.setGrabCursor(false);
+        data.isMoved = false;
+        data.startMoving = false;
+        return;
+    }
+    // Return Grab Cursor
+    if (params.grabCursor && data.isMoved && data.isTouched && (swiper.allowSlideNext === true || swiper.allowSlidePrev === true)) swiper.setGrabCursor(false);
+    // Time diff
+    const touchEndTime = (0, _utilsMjs.d)();
+    const timeDiff = touchEndTime - data.touchStartTime;
+    // Tap, doubleTap, Click
+    if (swiper.allowClick) {
+        const pathTree = e.path || e.composedPath && e.composedPath();
+        swiper.updateClickedSlide(pathTree && pathTree[0] || e.target, pathTree);
+        swiper.emit("tap click", e);
+        if (timeDiff < 300 && touchEndTime - data.lastClickTime < 300) swiper.emit("doubleTap doubleClick", e);
+    }
+    data.lastClickTime = (0, _utilsMjs.d)();
+    (0, _utilsMjs.n)(()=>{
+        if (!swiper.destroyed) swiper.allowClick = true;
+    });
+    if (!data.isTouched || !data.isMoved || !swiper.swipeDirection || touches.diff === 0 && !data.loopSwapReset || data.currentTranslate === data.startTranslate && !data.loopSwapReset) {
+        data.isTouched = false;
+        data.isMoved = false;
+        data.startMoving = false;
+        return;
+    }
+    data.isTouched = false;
+    data.isMoved = false;
+    data.startMoving = false;
+    let currentPos;
+    if (params.followFinger) currentPos = rtl ? swiper.translate : -swiper.translate;
+    else currentPos = -data.currentTranslate;
+    if (params.cssMode) return;
+    if (params.freeMode && params.freeMode.enabled) {
+        swiper.freeMode.onTouchEnd({
+            currentPos
+        });
+        return;
+    }
+    // Find current slide
+    const swipeToLast = currentPos >= -swiper.maxTranslate() && !swiper.params.loop;
+    let stopIndex = 0;
+    let groupSize = swiper.slidesSizesGrid[0];
+    for(let i = 0; i < slidesGrid.length; i += i < params.slidesPerGroupSkip ? 1 : params.slidesPerGroup){
+        const increment = i < params.slidesPerGroupSkip - 1 ? 1 : params.slidesPerGroup;
+        if (typeof slidesGrid[i + increment] !== "undefined") {
+            if (swipeToLast || currentPos >= slidesGrid[i] && currentPos < slidesGrid[i + increment]) {
+                stopIndex = i;
+                groupSize = slidesGrid[i + increment] - slidesGrid[i];
+            }
+        } else if (swipeToLast || currentPos >= slidesGrid[i]) {
+            stopIndex = i;
+            groupSize = slidesGrid[slidesGrid.length - 1] - slidesGrid[slidesGrid.length - 2];
+        }
+    }
+    let rewindFirstIndex = null;
+    let rewindLastIndex = null;
+    if (params.rewind) {
+        if (swiper.isBeginning) rewindLastIndex = params.virtual && params.virtual.enabled && swiper.virtual ? swiper.virtual.slides.length - 1 : swiper.slides.length - 1;
+        else if (swiper.isEnd) rewindFirstIndex = 0;
+    }
+    // Find current slide size
+    const ratio = (currentPos - slidesGrid[stopIndex]) / groupSize;
+    const increment = stopIndex < params.slidesPerGroupSkip - 1 ? 1 : params.slidesPerGroup;
+    if (timeDiff > params.longSwipesMs) {
+        // Long touches
+        if (!params.longSwipes) {
+            swiper.slideTo(swiper.activeIndex);
+            return;
+        }
+        if (swiper.swipeDirection === "next") {
+            if (ratio >= params.longSwipesRatio) swiper.slideTo(params.rewind && swiper.isEnd ? rewindFirstIndex : stopIndex + increment);
+            else swiper.slideTo(stopIndex);
+        }
+        if (swiper.swipeDirection === "prev") {
+            if (ratio > 1 - params.longSwipesRatio) swiper.slideTo(stopIndex + increment);
+            else if (rewindLastIndex !== null && ratio < 0 && Math.abs(ratio) > params.longSwipesRatio) swiper.slideTo(rewindLastIndex);
+            else swiper.slideTo(stopIndex);
+        }
+    } else {
+        // Short swipes
+        if (!params.shortSwipes) {
+            swiper.slideTo(swiper.activeIndex);
+            return;
+        }
+        const isNavButtonTarget = swiper.navigation && (e.target === swiper.navigation.nextEl || e.target === swiper.navigation.prevEl);
+        if (!isNavButtonTarget) {
+            if (swiper.swipeDirection === "next") swiper.slideTo(rewindFirstIndex !== null ? rewindFirstIndex : stopIndex + increment);
+            if (swiper.swipeDirection === "prev") swiper.slideTo(rewindLastIndex !== null ? rewindLastIndex : stopIndex);
+        } else if (e.target === swiper.navigation.nextEl) swiper.slideTo(stopIndex + increment);
+        else swiper.slideTo(stopIndex);
     }
 }
+function onResize() {
+    const swiper = this;
+    const { params , el  } = swiper;
+    if (el && el.offsetWidth === 0) return;
+    // Breakpoints
+    if (params.breakpoints) swiper.setBreakpoint();
+    // Save locks
+    const { allowSlideNext , allowSlidePrev , snapGrid  } = swiper;
+    const isVirtual = swiper.virtual && swiper.params.virtual.enabled;
+    // Disable locks on resize
+    swiper.allowSlideNext = true;
+    swiper.allowSlidePrev = true;
+    swiper.updateSize();
+    swiper.updateSlides();
+    swiper.updateSlidesClasses();
+    const isVirtualLoop = isVirtual && params.loop;
+    if ((params.slidesPerView === "auto" || params.slidesPerView > 1) && swiper.isEnd && !swiper.isBeginning && !swiper.params.centeredSlides && !isVirtualLoop) swiper.slideTo(swiper.slides.length - 1, 0, false, true);
+    else if (swiper.params.loop && !isVirtual) swiper.slideToLoop(swiper.realIndex, 0, false, true);
+    else swiper.slideTo(swiper.activeIndex, 0, false, true);
+    if (swiper.autoplay && swiper.autoplay.running && swiper.autoplay.paused) {
+        clearTimeout(swiper.autoplay.resizeTimeout);
+        swiper.autoplay.resizeTimeout = setTimeout(()=>{
+            if (swiper.autoplay && swiper.autoplay.running && swiper.autoplay.paused) swiper.autoplay.resume();
+        }, 500);
+    }
+    // Return locks after resize
+    swiper.allowSlidePrev = allowSlidePrev;
+    swiper.allowSlideNext = allowSlideNext;
+    if (swiper.params.watchOverflow && snapGrid !== swiper.snapGrid) swiper.checkOverflow();
+}
+function onClick(e) {
+    const swiper = this;
+    if (!swiper.enabled) return;
+    if (!swiper.allowClick) {
+        if (swiper.params.preventClicks) e.preventDefault();
+        if (swiper.params.preventClicksPropagation && swiper.animating) {
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+    }
+}
+function onScroll() {
+    const swiper = this;
+    const { wrapperEl , rtlTranslate , enabled  } = swiper;
+    if (!enabled) return;
+    swiper.previousTranslate = swiper.translate;
+    if (swiper.isHorizontal()) swiper.translate = -wrapperEl.scrollLeft;
+    else swiper.translate = -wrapperEl.scrollTop;
+    // eslint-disable-next-line
+    if (swiper.translate === 0) swiper.translate = 0;
+    swiper.updateActiveIndex();
+    swiper.updateSlidesClasses();
+    let newProgress;
+    const translatesDiff = swiper.maxTranslate() - swiper.minTranslate();
+    if (translatesDiff === 0) newProgress = 0;
+    else newProgress = (swiper.translate - swiper.minTranslate()) / translatesDiff;
+    if (newProgress !== swiper.progress) swiper.updateProgress(rtlTranslate ? -swiper.translate : swiper.translate);
+    swiper.emit("setTranslate", swiper.translate, false);
+}
+function onLoad(e) {
+    const swiper = this;
+    processLazyPreloader(swiper, e.target);
+    if (swiper.params.cssMode || swiper.params.slidesPerView !== "auto" && !swiper.params.autoHeight) return;
+    swiper.update();
+}
+function onDocumentTouchStart() {
+    const swiper = this;
+    if (swiper.documentTouchHandlerProceeded) return;
+    swiper.documentTouchHandlerProceeded = true;
+    if (swiper.params.touchReleaseOnEdges) swiper.el.style.touchAction = "auto";
+}
+const events = (swiper, method)=>{
+    const document1 = (0, _ssrWindowEsmMjs.g)();
+    const { params , el , wrapperEl , device  } = swiper;
+    const capture = !!params.nested;
+    const domMethod = method === "on" ? "addEventListener" : "removeEventListener";
+    const swiperMethod = method;
+    // Touch Events
+    document1[domMethod]("touchstart", swiper.onDocumentTouchStart, {
+        passive: false,
+        capture
+    });
+    el[domMethod]("touchstart", swiper.onTouchStart, {
+        passive: false
+    });
+    el[domMethod]("pointerdown", swiper.onTouchStart, {
+        passive: false
+    });
+    document1[domMethod]("touchmove", swiper.onTouchMove, {
+        passive: false,
+        capture
+    });
+    document1[domMethod]("pointermove", swiper.onTouchMove, {
+        passive: false,
+        capture
+    });
+    document1[domMethod]("touchend", swiper.onTouchEnd, {
+        passive: true
+    });
+    document1[domMethod]("pointerup", swiper.onTouchEnd, {
+        passive: true
+    });
+    document1[domMethod]("pointercancel", swiper.onTouchEnd, {
+        passive: true
+    });
+    document1[domMethod]("touchcancel", swiper.onTouchEnd, {
+        passive: true
+    });
+    document1[domMethod]("pointerout", swiper.onTouchEnd, {
+        passive: true
+    });
+    document1[domMethod]("pointerleave", swiper.onTouchEnd, {
+        passive: true
+    });
+    document1[domMethod]("contextmenu", swiper.onTouchEnd, {
+        passive: true
+    });
+    // Prevent Links Clicks
+    if (params.preventClicks || params.preventClicksPropagation) el[domMethod]("click", swiper.onClick, true);
+    if (params.cssMode) wrapperEl[domMethod]("scroll", swiper.onScroll);
+    // Resize handler
+    if (params.updateOnWindowResize) swiper[swiperMethod](device.ios || device.android ? "resize orientationchange observerUpdate" : "resize observerUpdate", onResize, true);
+    else swiper[swiperMethod]("observerUpdate", onResize, true);
+    // Images loader
+    el[domMethod]("load", swiper.onLoad, {
+        capture: true
+    });
+};
+function attachEvents() {
+    const swiper = this;
+    const { params  } = swiper;
+    swiper.onTouchStart = onTouchStart.bind(swiper);
+    swiper.onTouchMove = onTouchMove.bind(swiper);
+    swiper.onTouchEnd = onTouchEnd.bind(swiper);
+    swiper.onDocumentTouchStart = onDocumentTouchStart.bind(swiper);
+    if (params.cssMode) swiper.onScroll = onScroll.bind(swiper);
+    swiper.onClick = onClick.bind(swiper);
+    swiper.onLoad = onLoad.bind(swiper);
+    events(swiper, "on");
+}
+function detachEvents() {
+    const swiper = this;
+    events(swiper, "off");
+}
+var events$1 = {
+    attachEvents,
+    detachEvents
+};
+const isGridEnabled = (swiper, params)=>{
+    return swiper.grid && params.grid && params.grid.rows > 1;
+};
+function setBreakpoint() {
+    const swiper = this;
+    const { realIndex , initialized , params , el  } = swiper;
+    const breakpoints = params.breakpoints;
+    if (!breakpoints || breakpoints && Object.keys(breakpoints).length === 0) return;
+    // Get breakpoint for window width and update parameters
+    const breakpoint = swiper.getBreakpoint(breakpoints, swiper.params.breakpointsBase, swiper.el);
+    if (!breakpoint || swiper.currentBreakpoint === breakpoint) return;
+    const breakpointOnlyParams = breakpoint in breakpoints ? breakpoints[breakpoint] : undefined;
+    const breakpointParams = breakpointOnlyParams || swiper.originalParams;
+    const wasMultiRow = isGridEnabled(swiper, params);
+    const isMultiRow = isGridEnabled(swiper, breakpointParams);
+    const wasEnabled = params.enabled;
+    if (wasMultiRow && !isMultiRow) {
+        el.classList.remove(`${params.containerModifierClass}grid`, `${params.containerModifierClass}grid-column`);
+        swiper.emitContainerClasses();
+    } else if (!wasMultiRow && isMultiRow) {
+        el.classList.add(`${params.containerModifierClass}grid`);
+        if (breakpointParams.grid.fill && breakpointParams.grid.fill === "column" || !breakpointParams.grid.fill && params.grid.fill === "column") el.classList.add(`${params.containerModifierClass}grid-column`);
+        swiper.emitContainerClasses();
+    }
+    // Toggle navigation, pagination, scrollbar
+    [
+        "navigation",
+        "pagination",
+        "scrollbar"
+    ].forEach((prop)=>{
+        if (typeof breakpointParams[prop] === "undefined") return;
+        const wasModuleEnabled = params[prop] && params[prop].enabled;
+        const isModuleEnabled = breakpointParams[prop] && breakpointParams[prop].enabled;
+        if (wasModuleEnabled && !isModuleEnabled) swiper[prop].disable();
+        if (!wasModuleEnabled && isModuleEnabled) swiper[prop].enable();
+    });
+    const directionChanged = breakpointParams.direction && breakpointParams.direction !== params.direction;
+    const needsReLoop = params.loop && (breakpointParams.slidesPerView !== params.slidesPerView || directionChanged);
+    const wasLoop = params.loop;
+    if (directionChanged && initialized) swiper.changeDirection();
+    (0, _utilsMjs.u)(swiper.params, breakpointParams);
+    const isEnabled = swiper.params.enabled;
+    const hasLoop = swiper.params.loop;
+    Object.assign(swiper, {
+        allowTouchMove: swiper.params.allowTouchMove,
+        allowSlideNext: swiper.params.allowSlideNext,
+        allowSlidePrev: swiper.params.allowSlidePrev
+    });
+    if (wasEnabled && !isEnabled) swiper.disable();
+    else if (!wasEnabled && isEnabled) swiper.enable();
+    swiper.currentBreakpoint = breakpoint;
+    swiper.emit("_beforeBreakpoint", breakpointParams);
+    if (initialized) {
+        if (needsReLoop) {
+            swiper.loopDestroy();
+            swiper.loopCreate(realIndex);
+            swiper.updateSlides();
+        } else if (!wasLoop && hasLoop) {
+            swiper.loopCreate(realIndex);
+            swiper.updateSlides();
+        } else if (wasLoop && !hasLoop) swiper.loopDestroy();
+    }
+    swiper.emit("breakpoint", breakpointParams);
+}
+function getBreakpoint(breakpoints, base, containerEl) {
+    if (base === void 0) base = "window";
+    if (!breakpoints || base === "container" && !containerEl) return undefined;
+    let breakpoint = false;
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const currentHeight = base === "window" ? window1.innerHeight : containerEl.clientHeight;
+    const points = Object.keys(breakpoints).map((point)=>{
+        if (typeof point === "string" && point.indexOf("@") === 0) {
+            const minRatio = parseFloat(point.substr(1));
+            const value = currentHeight * minRatio;
+            return {
+                value,
+                point
+            };
+        }
+        return {
+            value: point,
+            point
+        };
+    });
+    points.sort((a, b)=>parseInt(a.value, 10) - parseInt(b.value, 10));
+    for(let i = 0; i < points.length; i += 1){
+        const { point , value  } = points[i];
+        if (base === "window") {
+            if (window1.matchMedia(`(min-width: ${value}px)`).matches) breakpoint = point;
+        } else if (value <= containerEl.clientWidth) breakpoint = point;
+    }
+    return breakpoint || "max";
+}
+var breakpoints = {
+    setBreakpoint,
+    getBreakpoint
+};
+function prepareClasses(entries, prefix) {
+    const resultClasses = [];
+    entries.forEach((item)=>{
+        if (typeof item === "object") Object.keys(item).forEach((classNames)=>{
+            if (item[classNames]) resultClasses.push(prefix + classNames);
+        });
+        else if (typeof item === "string") resultClasses.push(prefix + item);
+    });
+    return resultClasses;
+}
+function addClasses() {
+    const swiper = this;
+    const { classNames , params , rtl , el , device  } = swiper;
+    // prettier-ignore
+    const suffixes = prepareClasses([
+        "initialized",
+        params.direction,
+        {
+            "free-mode": swiper.params.freeMode && params.freeMode.enabled
+        },
+        {
+            "autoheight": params.autoHeight
+        },
+        {
+            "rtl": rtl
+        },
+        {
+            "grid": params.grid && params.grid.rows > 1
+        },
+        {
+            "grid-column": params.grid && params.grid.rows > 1 && params.grid.fill === "column"
+        },
+        {
+            "android": device.android
+        },
+        {
+            "ios": device.ios
+        },
+        {
+            "css-mode": params.cssMode
+        },
+        {
+            "centered": params.cssMode && params.centeredSlides
+        },
+        {
+            "watch-progress": params.watchSlidesProgress
+        }
+    ], params.containerModifierClass);
+    classNames.push(...suffixes);
+    el.classList.add(...classNames);
+    swiper.emitContainerClasses();
+}
+function removeClasses() {
+    const swiper = this;
+    const { el , classNames  } = swiper;
+    el.classList.remove(...classNames);
+    swiper.emitContainerClasses();
+}
+var classes = {
+    addClasses,
+    removeClasses
+};
+function checkOverflow() {
+    const swiper = this;
+    const { isLocked: wasLocked , params  } = swiper;
+    const { slidesOffsetBefore  } = params;
+    if (slidesOffsetBefore) {
+        const lastSlideIndex = swiper.slides.length - 1;
+        const lastSlideRightEdge = swiper.slidesGrid[lastSlideIndex] + swiper.slidesSizesGrid[lastSlideIndex] + slidesOffsetBefore * 2;
+        swiper.isLocked = swiper.size > lastSlideRightEdge;
+    } else swiper.isLocked = swiper.snapGrid.length === 1;
+    if (params.allowSlideNext === true) swiper.allowSlideNext = !swiper.isLocked;
+    if (params.allowSlidePrev === true) swiper.allowSlidePrev = !swiper.isLocked;
+    if (wasLocked && wasLocked !== swiper.isLocked) swiper.isEnd = false;
+    if (wasLocked !== swiper.isLocked) swiper.emit(swiper.isLocked ? "lock" : "unlock");
+}
+var checkOverflow$1 = {
+    checkOverflow
+};
+var defaults = {
+    init: true,
+    direction: "horizontal",
+    oneWayMovement: false,
+    swiperElementNodeName: "SWIPER-CONTAINER",
+    touchEventsTarget: "wrapper",
+    initialSlide: 0,
+    speed: 300,
+    cssMode: false,
+    updateOnWindowResize: true,
+    resizeObserver: true,
+    nested: false,
+    createElements: false,
+    eventsPrefix: "swiper",
+    enabled: true,
+    focusableElements: "input, select, option, textarea, button, video, label",
+    // Overrides
+    width: null,
+    height: null,
+    //
+    preventInteractionOnTransition: false,
+    // ssr
+    userAgent: null,
+    url: null,
+    // To support iOS's swipe-to-go-back gesture (when being used in-app).
+    edgeSwipeDetection: false,
+    edgeSwipeThreshold: 20,
+    // Autoheight
+    autoHeight: false,
+    // Set wrapper width
+    setWrapperSize: false,
+    // Virtual Translate
+    virtualTranslate: false,
+    // Effects
+    effect: "slide",
+    // 'slide' or 'fade' or 'cube' or 'coverflow' or 'flip'
+    // Breakpoints
+    breakpoints: undefined,
+    breakpointsBase: "window",
+    // Slides grid
+    spaceBetween: 0,
+    slidesPerView: 1,
+    slidesPerGroup: 1,
+    slidesPerGroupSkip: 0,
+    slidesPerGroupAuto: false,
+    centeredSlides: false,
+    centeredSlidesBounds: false,
+    slidesOffsetBefore: 0,
+    // in px
+    slidesOffsetAfter: 0,
+    // in px
+    normalizeSlideIndex: true,
+    centerInsufficientSlides: false,
+    // Disable swiper and hide navigation when container not overflow
+    watchOverflow: true,
+    // Round length
+    roundLengths: false,
+    // Touches
+    touchRatio: 1,
+    touchAngle: 45,
+    simulateTouch: true,
+    shortSwipes: true,
+    longSwipes: true,
+    longSwipesRatio: 0.5,
+    longSwipesMs: 300,
+    followFinger: true,
+    allowTouchMove: true,
+    threshold: 5,
+    touchMoveStopPropagation: false,
+    touchStartPreventDefault: true,
+    touchStartForcePreventDefault: false,
+    touchReleaseOnEdges: false,
+    // Unique Navigation Elements
+    uniqueNavElements: true,
+    // Resistance
+    resistance: true,
+    resistanceRatio: 0.85,
+    // Progress
+    watchSlidesProgress: false,
+    // Cursor
+    grabCursor: false,
+    // Clicks
+    preventClicks: true,
+    preventClicksPropagation: true,
+    slideToClickedSlide: false,
+    // loop
+    loop: false,
+    loopAddBlankSlides: true,
+    loopAdditionalSlides: 0,
+    loopPreventsSliding: true,
+    // rewind
+    rewind: false,
+    // Swiping/no swiping
+    allowSlidePrev: true,
+    allowSlideNext: true,
+    swipeHandler: null,
+    // '.swipe-handler',
+    noSwiping: true,
+    noSwipingClass: "swiper-no-swiping",
+    noSwipingSelector: null,
+    // Passive Listeners
+    passiveListeners: true,
+    maxBackfaceHiddenSlides: 10,
+    // NS
+    containerModifierClass: "swiper-",
+    // NEW
+    slideClass: "swiper-slide",
+    slideBlankClass: "swiper-slide-blank",
+    slideActiveClass: "swiper-slide-active",
+    slideVisibleClass: "swiper-slide-visible",
+    slideFullyVisibleClass: "swiper-slide-fully-visible",
+    slideNextClass: "swiper-slide-next",
+    slidePrevClass: "swiper-slide-prev",
+    wrapperClass: "swiper-wrapper",
+    lazyPreloaderClass: "swiper-lazy-preloader",
+    lazyPreloadPrevNext: 0,
+    // Callbacks
+    runCallbacksOnInit: true,
+    // Internals
+    _emitClasses: false
+};
+function moduleExtendParams(params, allModulesParams) {
+    return function extendParams(obj) {
+        if (obj === void 0) obj = {};
+        const moduleParamName = Object.keys(obj)[0];
+        const moduleParams = obj[moduleParamName];
+        if (typeof moduleParams !== "object" || moduleParams === null) {
+            (0, _utilsMjs.u)(allModulesParams, obj);
+            return;
+        }
+        if (params[moduleParamName] === true) params[moduleParamName] = {
+            enabled: true
+        };
+        if (moduleParamName === "navigation" && params[moduleParamName] && params[moduleParamName].enabled && !params[moduleParamName].prevEl && !params[moduleParamName].nextEl) params[moduleParamName].auto = true;
+        if ([
+            "pagination",
+            "scrollbar"
+        ].indexOf(moduleParamName) >= 0 && params[moduleParamName] && params[moduleParamName].enabled && !params[moduleParamName].el) params[moduleParamName].auto = true;
+        if (!(moduleParamName in params && "enabled" in moduleParams)) {
+            (0, _utilsMjs.u)(allModulesParams, obj);
+            return;
+        }
+        if (typeof params[moduleParamName] === "object" && !("enabled" in params[moduleParamName])) params[moduleParamName].enabled = true;
+        if (!params[moduleParamName]) params[moduleParamName] = {
+            enabled: false
+        };
+        (0, _utilsMjs.u)(allModulesParams, obj);
+    };
+}
+/* eslint no-param-reassign: "off" */ const prototypes = {
+    eventsEmitter,
+    update,
+    translate,
+    transition,
+    slide,
+    loop,
+    grabCursor,
+    events: events$1,
+    breakpoints,
+    checkOverflow: checkOverflow$1,
+    classes
+};
+const extendedDefaults = {};
+class Swiper {
+    constructor(){
+        let el;
+        let params;
+        for(var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++)args[_key] = arguments[_key];
+        if (args.length === 1 && args[0].constructor && Object.prototype.toString.call(args[0]).slice(8, -1) === "Object") params = args[0];
+        else [el, params] = args;
+        if (!params) params = {};
+        params = (0, _utilsMjs.u)({}, params);
+        if (el && !params.el) params.el = el;
+        const document1 = (0, _ssrWindowEsmMjs.g)();
+        if (params.el && typeof params.el === "string" && document1.querySelectorAll(params.el).length > 1) {
+            const swipers = [];
+            document1.querySelectorAll(params.el).forEach((containerEl)=>{
+                const newParams = (0, _utilsMjs.u)({}, params, {
+                    el: containerEl
+                });
+                swipers.push(new Swiper(newParams));
+            });
+            // eslint-disable-next-line no-constructor-return
+            return swipers;
+        }
+        // Swiper Instance
+        const swiper = this;
+        swiper.__swiper__ = true;
+        swiper.support = getSupport();
+        swiper.device = getDevice({
+            userAgent: params.userAgent
+        });
+        swiper.browser = getBrowser();
+        swiper.eventsListeners = {};
+        swiper.eventsAnyListeners = [];
+        swiper.modules = [
+            ...swiper.__modules__
+        ];
+        if (params.modules && Array.isArray(params.modules)) swiper.modules.push(...params.modules);
+        const allModulesParams = {};
+        swiper.modules.forEach((mod)=>{
+            mod({
+                params,
+                swiper,
+                extendParams: moduleExtendParams(params, allModulesParams),
+                on: swiper.on.bind(swiper),
+                once: swiper.once.bind(swiper),
+                off: swiper.off.bind(swiper),
+                emit: swiper.emit.bind(swiper)
+            });
+        });
+        // Extend defaults with modules params
+        const swiperParams = (0, _utilsMjs.u)({}, defaults, allModulesParams);
+        // Extend defaults with passed params
+        swiper.params = (0, _utilsMjs.u)({}, swiperParams, extendedDefaults, params);
+        swiper.originalParams = (0, _utilsMjs.u)({}, swiper.params);
+        swiper.passedParams = (0, _utilsMjs.u)({}, params);
+        // add event listeners
+        if (swiper.params && swiper.params.on) Object.keys(swiper.params.on).forEach((eventName)=>{
+            swiper.on(eventName, swiper.params.on[eventName]);
+        });
+        if (swiper.params && swiper.params.onAny) swiper.onAny(swiper.params.onAny);
+        // Extend Swiper
+        Object.assign(swiper, {
+            enabled: swiper.params.enabled,
+            el,
+            // Classes
+            classNames: [],
+            // Slides
+            slides: [],
+            slidesGrid: [],
+            snapGrid: [],
+            slidesSizesGrid: [],
+            // isDirection
+            isHorizontal () {
+                return swiper.params.direction === "horizontal";
+            },
+            isVertical () {
+                return swiper.params.direction === "vertical";
+            },
+            // Indexes
+            activeIndex: 0,
+            realIndex: 0,
+            //
+            isBeginning: true,
+            isEnd: false,
+            // Props
+            translate: 0,
+            previousTranslate: 0,
+            progress: 0,
+            velocity: 0,
+            animating: false,
+            cssOverflowAdjustment () {
+                // Returns 0 unless `translate` is > 2**23
+                // Should be subtracted from css values to prevent overflow
+                return Math.trunc(this.translate / 2 ** 23) * 2 ** 23;
+            },
+            // Locks
+            allowSlideNext: swiper.params.allowSlideNext,
+            allowSlidePrev: swiper.params.allowSlidePrev,
+            // Touch Events
+            touchEventsData: {
+                isTouched: undefined,
+                isMoved: undefined,
+                allowTouchCallbacks: undefined,
+                touchStartTime: undefined,
+                isScrolling: undefined,
+                currentTranslate: undefined,
+                startTranslate: undefined,
+                allowThresholdMove: undefined,
+                // Form elements to match
+                focusableElements: swiper.params.focusableElements,
+                // Last click time
+                lastClickTime: 0,
+                clickTimeout: undefined,
+                // Velocities
+                velocities: [],
+                allowMomentumBounce: undefined,
+                startMoving: undefined,
+                pointerId: null,
+                touchId: null
+            },
+            // Clicks
+            allowClick: true,
+            // Touches
+            allowTouchMove: swiper.params.allowTouchMove,
+            touches: {
+                startX: 0,
+                startY: 0,
+                currentX: 0,
+                currentY: 0,
+                diff: 0
+            },
+            // Images
+            imagesToLoad: [],
+            imagesLoaded: 0
+        });
+        swiper.emit("_swiper");
+        // Init
+        if (swiper.params.init) swiper.init();
+        // Return app instance
+        // eslint-disable-next-line no-constructor-return
+        return swiper;
+    }
+    getDirectionLabel(property) {
+        if (this.isHorizontal()) return property;
+        // prettier-ignore
+        return ({
+            "width": "height",
+            "margin-top": "margin-left",
+            "margin-bottom ": "margin-right",
+            "margin-left": "margin-top",
+            "margin-right": "margin-bottom",
+            "padding-left": "padding-top",
+            "padding-right": "padding-bottom",
+            "marginRight": "marginBottom"
+        })[property];
+    }
+    getSlideIndex(slideEl) {
+        const { slidesEl , params  } = this;
+        const slides = (0, _utilsMjs.e)(slidesEl, `.${params.slideClass}, swiper-slide`);
+        const firstSlideIndex = (0, _utilsMjs.g)(slides[0]);
+        return (0, _utilsMjs.g)(slideEl) - firstSlideIndex;
+    }
+    getSlideIndexByData(index) {
+        return this.getSlideIndex(this.slides.filter((slideEl)=>slideEl.getAttribute("data-swiper-slide-index") * 1 === index)[0]);
+    }
+    recalcSlides() {
+        const swiper = this;
+        const { slidesEl , params  } = swiper;
+        swiper.slides = (0, _utilsMjs.e)(slidesEl, `.${params.slideClass}, swiper-slide`);
+    }
+    enable() {
+        const swiper = this;
+        if (swiper.enabled) return;
+        swiper.enabled = true;
+        if (swiper.params.grabCursor) swiper.setGrabCursor();
+        swiper.emit("enable");
+    }
+    disable() {
+        const swiper = this;
+        if (!swiper.enabled) return;
+        swiper.enabled = false;
+        if (swiper.params.grabCursor) swiper.unsetGrabCursor();
+        swiper.emit("disable");
+    }
+    setProgress(progress, speed) {
+        const swiper = this;
+        progress = Math.min(Math.max(progress, 0), 1);
+        const min = swiper.minTranslate();
+        const max = swiper.maxTranslate();
+        const current = (max - min) * progress + min;
+        swiper.translateTo(current, typeof speed === "undefined" ? 0 : speed);
+        swiper.updateActiveIndex();
+        swiper.updateSlidesClasses();
+    }
+    emitContainerClasses() {
+        const swiper = this;
+        if (!swiper.params._emitClasses || !swiper.el) return;
+        const cls = swiper.el.className.split(" ").filter((className)=>{
+            return className.indexOf("swiper") === 0 || className.indexOf(swiper.params.containerModifierClass) === 0;
+        });
+        swiper.emit("_containerClasses", cls.join(" "));
+    }
+    getSlideClasses(slideEl) {
+        const swiper = this;
+        if (swiper.destroyed) return "";
+        return slideEl.className.split(" ").filter((className)=>{
+            return className.indexOf("swiper-slide") === 0 || className.indexOf(swiper.params.slideClass) === 0;
+        }).join(" ");
+    }
+    emitSlidesClasses() {
+        const swiper = this;
+        if (!swiper.params._emitClasses || !swiper.el) return;
+        const updates = [];
+        swiper.slides.forEach((slideEl)=>{
+            const classNames = swiper.getSlideClasses(slideEl);
+            updates.push({
+                slideEl,
+                classNames
+            });
+            swiper.emit("_slideClass", slideEl, classNames);
+        });
+        swiper.emit("_slideClasses", updates);
+    }
+    slidesPerViewDynamic(view, exact) {
+        if (view === void 0) view = "current";
+        if (exact === void 0) exact = false;
+        const swiper = this;
+        const { params , slides , slidesGrid , slidesSizesGrid , size: swiperSize , activeIndex  } = swiper;
+        let spv = 1;
+        if (typeof params.slidesPerView === "number") return params.slidesPerView;
+        if (params.centeredSlides) {
+            let slideSize = slides[activeIndex] ? Math.ceil(slides[activeIndex].swiperSlideSize) : 0;
+            let breakLoop;
+            for(let i = activeIndex + 1; i < slides.length; i += 1)if (slides[i] && !breakLoop) {
+                slideSize += Math.ceil(slides[i].swiperSlideSize);
+                spv += 1;
+                if (slideSize > swiperSize) breakLoop = true;
+            }
+            for(let i = activeIndex - 1; i >= 0; i -= 1)if (slides[i] && !breakLoop) {
+                slideSize += slides[i].swiperSlideSize;
+                spv += 1;
+                if (slideSize > swiperSize) breakLoop = true;
+            }
+        } else {
+            // eslint-disable-next-line
+            if (view === "current") for(let i = activeIndex + 1; i < slides.length; i += 1){
+                const slideInView = exact ? slidesGrid[i] + slidesSizesGrid[i] - slidesGrid[activeIndex] < swiperSize : slidesGrid[i] - slidesGrid[activeIndex] < swiperSize;
+                if (slideInView) spv += 1;
+            }
+            else // previous
+            for(let i = activeIndex - 1; i >= 0; i -= 1){
+                const slideInView = slidesGrid[activeIndex] - slidesGrid[i] < swiperSize;
+                if (slideInView) spv += 1;
+            }
+        }
+        return spv;
+    }
+    update() {
+        const swiper = this;
+        if (!swiper || swiper.destroyed) return;
+        const { snapGrid , params  } = swiper;
+        // Breakpoints
+        if (params.breakpoints) swiper.setBreakpoint();
+        [
+            ...swiper.el.querySelectorAll('[loading="lazy"]')
+        ].forEach((imageEl)=>{
+            if (imageEl.complete) processLazyPreloader(swiper, imageEl);
+        });
+        swiper.updateSize();
+        swiper.updateSlides();
+        swiper.updateProgress();
+        swiper.updateSlidesClasses();
+        function setTranslate() {
+            const translateValue = swiper.rtlTranslate ? swiper.translate * -1 : swiper.translate;
+            const newTranslate = Math.min(Math.max(translateValue, swiper.maxTranslate()), swiper.minTranslate());
+            swiper.setTranslate(newTranslate);
+            swiper.updateActiveIndex();
+            swiper.updateSlidesClasses();
+        }
+        let translated;
+        if (params.freeMode && params.freeMode.enabled && !params.cssMode) {
+            setTranslate();
+            if (params.autoHeight) swiper.updateAutoHeight();
+        } else {
+            if ((params.slidesPerView === "auto" || params.slidesPerView > 1) && swiper.isEnd && !params.centeredSlides) {
+                const slides = swiper.virtual && params.virtual.enabled ? swiper.virtual.slides : swiper.slides;
+                translated = swiper.slideTo(slides.length - 1, 0, false, true);
+            } else translated = swiper.slideTo(swiper.activeIndex, 0, false, true);
+            if (!translated) setTranslate();
+        }
+        if (params.watchOverflow && snapGrid !== swiper.snapGrid) swiper.checkOverflow();
+        swiper.emit("update");
+    }
+    changeDirection(newDirection, needUpdate) {
+        if (needUpdate === void 0) needUpdate = true;
+        const swiper = this;
+        const currentDirection = swiper.params.direction;
+        if (!newDirection) // eslint-disable-next-line
+        newDirection = currentDirection === "horizontal" ? "vertical" : "horizontal";
+        if (newDirection === currentDirection || newDirection !== "horizontal" && newDirection !== "vertical") return swiper;
+        swiper.el.classList.remove(`${swiper.params.containerModifierClass}${currentDirection}`);
+        swiper.el.classList.add(`${swiper.params.containerModifierClass}${newDirection}`);
+        swiper.emitContainerClasses();
+        swiper.params.direction = newDirection;
+        swiper.slides.forEach((slideEl)=>{
+            if (newDirection === "vertical") slideEl.style.width = "";
+            else slideEl.style.height = "";
+        });
+        swiper.emit("changeDirection");
+        if (needUpdate) swiper.update();
+        return swiper;
+    }
+    changeLanguageDirection(direction) {
+        const swiper = this;
+        if (swiper.rtl && direction === "rtl" || !swiper.rtl && direction === "ltr") return;
+        swiper.rtl = direction === "rtl";
+        swiper.rtlTranslate = swiper.params.direction === "horizontal" && swiper.rtl;
+        if (swiper.rtl) {
+            swiper.el.classList.add(`${swiper.params.containerModifierClass}rtl`);
+            swiper.el.dir = "rtl";
+        } else {
+            swiper.el.classList.remove(`${swiper.params.containerModifierClass}rtl`);
+            swiper.el.dir = "ltr";
+        }
+        swiper.update();
+    }
+    mount(element) {
+        const swiper = this;
+        if (swiper.mounted) return true;
+        // Find el
+        let el = element || swiper.params.el;
+        if (typeof el === "string") el = document.querySelector(el);
+        if (!el) return false;
+        el.swiper = swiper;
+        if (el.parentNode && el.parentNode.host && el.parentNode.host.nodeName === swiper.params.swiperElementNodeName.toUpperCase()) swiper.isElement = true;
+        const getWrapperSelector = ()=>{
+            return `.${(swiper.params.wrapperClass || "").trim().split(" ").join(".")}`;
+        };
+        const getWrapper = ()=>{
+            if (el && el.shadowRoot && el.shadowRoot.querySelector) {
+                const res = el.shadowRoot.querySelector(getWrapperSelector());
+                // Children needs to return slot items
+                return res;
+            }
+            return (0, _utilsMjs.e)(el, getWrapperSelector())[0];
+        };
+        // Find Wrapper
+        let wrapperEl = getWrapper();
+        if (!wrapperEl && swiper.params.createElements) {
+            wrapperEl = (0, _utilsMjs.c)("div", swiper.params.wrapperClass);
+            el.append(wrapperEl);
+            (0, _utilsMjs.e)(el, `.${swiper.params.slideClass}`).forEach((slideEl)=>{
+                wrapperEl.append(slideEl);
+            });
+        }
+        Object.assign(swiper, {
+            el,
+            wrapperEl,
+            slidesEl: swiper.isElement && !el.parentNode.host.slideSlots ? el.parentNode.host : wrapperEl,
+            hostEl: swiper.isElement ? el.parentNode.host : el,
+            mounted: true,
+            // RTL
+            rtl: el.dir.toLowerCase() === "rtl" || (0, _utilsMjs.o)(el, "direction") === "rtl",
+            rtlTranslate: swiper.params.direction === "horizontal" && (el.dir.toLowerCase() === "rtl" || (0, _utilsMjs.o)(el, "direction") === "rtl"),
+            wrongRTL: (0, _utilsMjs.o)(wrapperEl, "display") === "-webkit-box"
+        });
+        return true;
+    }
+    init(el) {
+        const swiper = this;
+        if (swiper.initialized) return swiper;
+        const mounted = swiper.mount(el);
+        if (mounted === false) return swiper;
+        swiper.emit("beforeInit");
+        // Set breakpoint
+        if (swiper.params.breakpoints) swiper.setBreakpoint();
+        // Add Classes
+        swiper.addClasses();
+        // Update size
+        swiper.updateSize();
+        // Update slides
+        swiper.updateSlides();
+        if (swiper.params.watchOverflow) swiper.checkOverflow();
+        // Set Grab Cursor
+        if (swiper.params.grabCursor && swiper.enabled) swiper.setGrabCursor();
+        // Slide To Initial Slide
+        if (swiper.params.loop && swiper.virtual && swiper.params.virtual.enabled) swiper.slideTo(swiper.params.initialSlide + swiper.virtual.slidesBefore, 0, swiper.params.runCallbacksOnInit, false, true);
+        else swiper.slideTo(swiper.params.initialSlide, 0, swiper.params.runCallbacksOnInit, false, true);
+        // Create loop
+        if (swiper.params.loop) swiper.loopCreate();
+        // Attach events
+        swiper.attachEvents();
+        const lazyElements = [
+            ...swiper.el.querySelectorAll('[loading="lazy"]')
+        ];
+        if (swiper.isElement) lazyElements.push(...swiper.hostEl.querySelectorAll('[loading="lazy"]'));
+        lazyElements.forEach((imageEl)=>{
+            if (imageEl.complete) processLazyPreloader(swiper, imageEl);
+            else imageEl.addEventListener("load", (e)=>{
+                processLazyPreloader(swiper, e.target);
+            });
+        });
+        preload(swiper);
+        // Init Flag
+        swiper.initialized = true;
+        preload(swiper);
+        // Emit
+        swiper.emit("init");
+        swiper.emit("afterInit");
+        return swiper;
+    }
+    destroy(deleteInstance, cleanStyles) {
+        if (deleteInstance === void 0) deleteInstance = true;
+        if (cleanStyles === void 0) cleanStyles = true;
+        const swiper = this;
+        const { params , el , wrapperEl , slides  } = swiper;
+        if (typeof swiper.params === "undefined" || swiper.destroyed) return null;
+        swiper.emit("beforeDestroy");
+        // Init Flag
+        swiper.initialized = false;
+        // Detach events
+        swiper.detachEvents();
+        // Destroy loop
+        if (params.loop) swiper.loopDestroy();
+        // Cleanup styles
+        if (cleanStyles) {
+            swiper.removeClasses();
+            el.removeAttribute("style");
+            wrapperEl.removeAttribute("style");
+            if (slides && slides.length) slides.forEach((slideEl)=>{
+                slideEl.classList.remove(params.slideVisibleClass, params.slideFullyVisibleClass, params.slideActiveClass, params.slideNextClass, params.slidePrevClass);
+                slideEl.removeAttribute("style");
+                slideEl.removeAttribute("data-swiper-slide-index");
+            });
+        }
+        swiper.emit("destroy");
+        // Detach emitter events
+        Object.keys(swiper.eventsListeners).forEach((eventName)=>{
+            swiper.off(eventName);
+        });
+        if (deleteInstance !== false) {
+            swiper.el.swiper = null;
+            (0, _utilsMjs.v)(swiper);
+        }
+        swiper.destroyed = true;
+        return null;
+    }
+    static extendDefaults(newDefaults) {
+        (0, _utilsMjs.u)(extendedDefaults, newDefaults);
+    }
+    static get extendedDefaults() {
+        return extendedDefaults;
+    }
+    static get defaults() {
+        return defaults;
+    }
+    static installModule(mod) {
+        if (!Swiper.prototype.__modules__) Swiper.prototype.__modules__ = [];
+        const modules = Swiper.prototype.__modules__;
+        if (typeof mod === "function" && modules.indexOf(mod) < 0) modules.push(mod);
+    }
+    static use(module) {
+        if (Array.isArray(module)) {
+            module.forEach((m)=>Swiper.installModule(m));
+            return Swiper;
+        }
+        Swiper.installModule(module);
+        return Swiper;
+    }
+}
+Object.keys(prototypes).forEach((prototypeGroup)=>{
+    Object.keys(prototypes[prototypeGroup]).forEach((protoMethod)=>{
+        Swiper.prototype[protoMethod] = prototypes[prototypeGroup][protoMethod];
+    });
+});
+Swiper.use([
+    Resize,
+    Observer
+]);
 
-},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"kwIZv":[function(require,module,exports) {
-module.exports = require("704aa889257f973e").getBundleURL("hcaXs") + "enviroment.dff6da94.hdr" + "?" + Date.now();
+},{"./ssr-window.esm.mjs":"th8PY","./utils.mjs":"9mU7V","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"th8PY":[function(require,module,exports) {
+/**
+ * SSR Window 4.0.2
+ * Better handling for window object in SSR environment
+ * https://github.com/nolimits4web/ssr-window
+ *
+ * Copyright 2021, Vladimir Kharlampidi
+ *
+ * Licensed under MIT
+ *
+ * Released on: December 13, 2021
+ */ /* eslint-disable no-param-reassign */ var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "a", ()=>getWindow);
+parcelHelpers.export(exports, "g", ()=>getDocument);
+function isObject(obj) {
+    return obj !== null && typeof obj === "object" && "constructor" in obj && obj.constructor === Object;
+}
+function extend(target, src) {
+    if (target === void 0) target = {};
+    if (src === void 0) src = {};
+    Object.keys(src).forEach((key)=>{
+        if (typeof target[key] === "undefined") target[key] = src[key];
+        else if (isObject(src[key]) && isObject(target[key]) && Object.keys(src[key]).length > 0) extend(target[key], src[key]);
+    });
+}
+const ssrDocument = {
+    body: {},
+    addEventListener () {},
+    removeEventListener () {},
+    activeElement: {
+        blur () {},
+        nodeName: ""
+    },
+    querySelector () {
+        return null;
+    },
+    querySelectorAll () {
+        return [];
+    },
+    getElementById () {
+        return null;
+    },
+    createEvent () {
+        return {
+            initEvent () {}
+        };
+    },
+    createElement () {
+        return {
+            children: [],
+            childNodes: [],
+            style: {},
+            setAttribute () {},
+            getElementsByTagName () {
+                return [];
+            }
+        };
+    },
+    createElementNS () {
+        return {};
+    },
+    importNode () {
+        return null;
+    },
+    location: {
+        hash: "",
+        host: "",
+        hostname: "",
+        href: "",
+        origin: "",
+        pathname: "",
+        protocol: "",
+        search: ""
+    }
+};
+function getDocument() {
+    const doc = typeof document !== "undefined" ? document : {};
+    extend(doc, ssrDocument);
+    return doc;
+}
+const ssrWindow = {
+    document: ssrDocument,
+    navigator: {
+        userAgent: ""
+    },
+    location: {
+        hash: "",
+        host: "",
+        hostname: "",
+        href: "",
+        origin: "",
+        pathname: "",
+        protocol: "",
+        search: ""
+    },
+    history: {
+        replaceState () {},
+        pushState () {},
+        go () {},
+        back () {}
+    },
+    CustomEvent: function CustomEvent() {
+        return this;
+    },
+    addEventListener () {},
+    removeEventListener () {},
+    getComputedStyle () {
+        return {
+            getPropertyValue () {
+                return "";
+            }
+        };
+    },
+    Image () {},
+    Date () {},
+    screen: {},
+    setTimeout () {},
+    clearTimeout () {},
+    matchMedia () {
+        return {};
+    },
+    requestAnimationFrame (callback) {
+        if (typeof setTimeout === "undefined") {
+            callback();
+            return null;
+        }
+        return setTimeout(callback, 0);
+    },
+    cancelAnimationFrame (id) {
+        if (typeof setTimeout === "undefined") return;
+        clearTimeout(id);
+    }
+};
+function getWindow() {
+    const win = typeof window !== "undefined" ? window : {};
+    extend(win, ssrWindow);
+    return win;
+}
 
-},{"704aa889257f973e":"j9GCc"}],"5YJZe":[function(require,module,exports) {
-module.exports = require("216950d480ca88d9").getBundleURL("hcaXs") + "model.433f992b.glb" + "?" + Date.now();
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"9mU7V":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "a", ()=>elementParents);
+parcelHelpers.export(exports, "b", ()=>elementOffset);
+parcelHelpers.export(exports, "c", ()=>createElement);
+parcelHelpers.export(exports, "d", ()=>now);
+parcelHelpers.export(exports, "e", ()=>elementChildren);
+parcelHelpers.export(exports, "f", ()=>elementOuterSize);
+parcelHelpers.export(exports, "g", ()=>elementIndex);
+parcelHelpers.export(exports, "h", ()=>classesToTokens);
+parcelHelpers.export(exports, "i", ()=>getTranslate);
+parcelHelpers.export(exports, "j", ()=>elementTransitionEnd);
+parcelHelpers.export(exports, "k", ()=>isObject);
+parcelHelpers.export(exports, "l", ()=>getSlideTransformEl);
+parcelHelpers.export(exports, "m", ()=>makeElementsArray);
+parcelHelpers.export(exports, "n", ()=>nextTick);
+parcelHelpers.export(exports, "o", ()=>elementStyle);
+parcelHelpers.export(exports, "p", ()=>elementNextAll);
+parcelHelpers.export(exports, "q", ()=>elementPrevAll);
+parcelHelpers.export(exports, "r", ()=>animateCSSModeScroll);
+parcelHelpers.export(exports, "s", ()=>setCSSProperty);
+parcelHelpers.export(exports, "t", ()=>showWarning);
+parcelHelpers.export(exports, "u", ()=>extend);
+parcelHelpers.export(exports, "v", ()=>deleteProps);
+var _ssrWindowEsmMjs = require("./ssr-window.esm.mjs");
+function classesToTokens(classes) {
+    if (classes === void 0) classes = "";
+    return classes.trim().split(" ").filter((c)=>!!c.trim());
+}
+function deleteProps(obj) {
+    const object = obj;
+    Object.keys(object).forEach((key)=>{
+        try {
+            object[key] = null;
+        } catch (e) {
+        // no getter for object
+        }
+        try {
+            delete object[key];
+        } catch (e) {
+        // something got wrong
+        }
+    });
+}
+function nextTick(callback, delay) {
+    if (delay === void 0) delay = 0;
+    return setTimeout(callback, delay);
+}
+function now() {
+    return Date.now();
+}
+function getComputedStyle(el) {
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    let style;
+    if (window1.getComputedStyle) style = window1.getComputedStyle(el, null);
+    if (!style && el.currentStyle) style = el.currentStyle;
+    if (!style) style = el.style;
+    return style;
+}
+function getTranslate(el, axis) {
+    if (axis === void 0) axis = "x";
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    let matrix;
+    let curTransform;
+    let transformMatrix;
+    const curStyle = getComputedStyle(el);
+    if (window1.WebKitCSSMatrix) {
+        curTransform = curStyle.transform || curStyle.webkitTransform;
+        if (curTransform.split(",").length > 6) curTransform = curTransform.split(", ").map((a)=>a.replace(",", ".")).join(", ");
+        // Some old versions of Webkit choke when 'none' is passed; pass
+        // empty string instead in this case
+        transformMatrix = new window1.WebKitCSSMatrix(curTransform === "none" ? "" : curTransform);
+    } else {
+        transformMatrix = curStyle.MozTransform || curStyle.OTransform || curStyle.MsTransform || curStyle.msTransform || curStyle.transform || curStyle.getPropertyValue("transform").replace("translate(", "matrix(1, 0, 0, 1,");
+        matrix = transformMatrix.toString().split(",");
+    }
+    if (axis === "x") {
+        // Latest Chrome and webkits Fix
+        if (window1.WebKitCSSMatrix) curTransform = transformMatrix.m41;
+        else if (matrix.length === 16) curTransform = parseFloat(matrix[12]);
+        else curTransform = parseFloat(matrix[4]);
+    }
+    if (axis === "y") {
+        // Latest Chrome and webkits Fix
+        if (window1.WebKitCSSMatrix) curTransform = transformMatrix.m42;
+        else if (matrix.length === 16) curTransform = parseFloat(matrix[13]);
+        else curTransform = parseFloat(matrix[5]);
+    }
+    return curTransform || 0;
+}
+function isObject(o) {
+    return typeof o === "object" && o !== null && o.constructor && Object.prototype.toString.call(o).slice(8, -1) === "Object";
+}
+function isNode(node) {
+    // eslint-disable-next-line
+    if (typeof window !== "undefined" && typeof window.HTMLElement !== "undefined") return node instanceof HTMLElement;
+    return node && (node.nodeType === 1 || node.nodeType === 11);
+}
+function extend() {
+    const to = Object(arguments.length <= 0 ? undefined : arguments[0]);
+    const noExtend = [
+        "__proto__",
+        "constructor",
+        "prototype"
+    ];
+    for(let i = 1; i < arguments.length; i += 1){
+        const nextSource = i < 0 || arguments.length <= i ? undefined : arguments[i];
+        if (nextSource !== undefined && nextSource !== null && !isNode(nextSource)) {
+            const keysArray = Object.keys(Object(nextSource)).filter((key)=>noExtend.indexOf(key) < 0);
+            for(let nextIndex = 0, len = keysArray.length; nextIndex < len; nextIndex += 1){
+                const nextKey = keysArray[nextIndex];
+                const desc = Object.getOwnPropertyDescriptor(nextSource, nextKey);
+                if (desc !== undefined && desc.enumerable) {
+                    if (isObject(to[nextKey]) && isObject(nextSource[nextKey])) {
+                        if (nextSource[nextKey].__swiper__) to[nextKey] = nextSource[nextKey];
+                        else extend(to[nextKey], nextSource[nextKey]);
+                    } else if (!isObject(to[nextKey]) && isObject(nextSource[nextKey])) {
+                        to[nextKey] = {};
+                        if (nextSource[nextKey].__swiper__) to[nextKey] = nextSource[nextKey];
+                        else extend(to[nextKey], nextSource[nextKey]);
+                    } else to[nextKey] = nextSource[nextKey];
+                }
+            }
+        }
+    }
+    return to;
+}
+function setCSSProperty(el, varName, varValue) {
+    el.style.setProperty(varName, varValue);
+}
+function animateCSSModeScroll(_ref) {
+    let { swiper , targetPosition , side  } = _ref;
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const startPosition = -swiper.translate;
+    let startTime = null;
+    let time;
+    const duration = swiper.params.speed;
+    swiper.wrapperEl.style.scrollSnapType = "none";
+    window1.cancelAnimationFrame(swiper.cssModeFrameID);
+    const dir = targetPosition > startPosition ? "next" : "prev";
+    const isOutOfBound = (current, target)=>{
+        return dir === "next" && current >= target || dir === "prev" && current <= target;
+    };
+    const animate = ()=>{
+        time = new Date().getTime();
+        if (startTime === null) startTime = time;
+        const progress = Math.max(Math.min((time - startTime) / duration, 1), 0);
+        const easeProgress = 0.5 - Math.cos(progress * Math.PI) / 2;
+        let currentPosition = startPosition + easeProgress * (targetPosition - startPosition);
+        if (isOutOfBound(currentPosition, targetPosition)) currentPosition = targetPosition;
+        swiper.wrapperEl.scrollTo({
+            [side]: currentPosition
+        });
+        if (isOutOfBound(currentPosition, targetPosition)) {
+            swiper.wrapperEl.style.overflow = "hidden";
+            swiper.wrapperEl.style.scrollSnapType = "";
+            setTimeout(()=>{
+                swiper.wrapperEl.style.overflow = "";
+                swiper.wrapperEl.scrollTo({
+                    [side]: currentPosition
+                });
+            });
+            window1.cancelAnimationFrame(swiper.cssModeFrameID);
+            return;
+        }
+        swiper.cssModeFrameID = window1.requestAnimationFrame(animate);
+    };
+    animate();
+}
+function getSlideTransformEl(slideEl) {
+    return slideEl.querySelector(".swiper-slide-transform") || slideEl.shadowRoot && slideEl.shadowRoot.querySelector(".swiper-slide-transform") || slideEl;
+}
+function elementChildren(element, selector) {
+    if (selector === void 0) selector = "";
+    return [
+        ...element.children
+    ].filter((el)=>el.matches(selector));
+}
+function showWarning(text) {
+    try {
+        console.warn(text);
+        return;
+    } catch (err) {
+    // err
+    }
+}
+function createElement(tag, classes) {
+    if (classes === void 0) classes = [];
+    const el = document.createElement(tag);
+    el.classList.add(...Array.isArray(classes) ? classes : classesToTokens(classes));
+    return el;
+}
+function elementOffset(el) {
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    const document1 = (0, _ssrWindowEsmMjs.g)();
+    const box = el.getBoundingClientRect();
+    const body = document1.body;
+    const clientTop = el.clientTop || body.clientTop || 0;
+    const clientLeft = el.clientLeft || body.clientLeft || 0;
+    const scrollTop = el === window1 ? window1.scrollY : el.scrollTop;
+    const scrollLeft = el === window1 ? window1.scrollX : el.scrollLeft;
+    return {
+        top: box.top + scrollTop - clientTop,
+        left: box.left + scrollLeft - clientLeft
+    };
+}
+function elementPrevAll(el, selector) {
+    const prevEls = [];
+    while(el.previousElementSibling){
+        const prev = el.previousElementSibling; // eslint-disable-line
+        if (selector) {
+            if (prev.matches(selector)) prevEls.push(prev);
+        } else prevEls.push(prev);
+        el = prev;
+    }
+    return prevEls;
+}
+function elementNextAll(el, selector) {
+    const nextEls = [];
+    while(el.nextElementSibling){
+        const next = el.nextElementSibling; // eslint-disable-line
+        if (selector) {
+            if (next.matches(selector)) nextEls.push(next);
+        } else nextEls.push(next);
+        el = next;
+    }
+    return nextEls;
+}
+function elementStyle(el, prop) {
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    return window1.getComputedStyle(el, null).getPropertyValue(prop);
+}
+function elementIndex(el) {
+    let child = el;
+    let i;
+    if (child) {
+        i = 0;
+        // eslint-disable-next-line
+        while((child = child.previousSibling) !== null)if (child.nodeType === 1) i += 1;
+        return i;
+    }
+    return undefined;
+}
+function elementParents(el, selector) {
+    const parents = []; // eslint-disable-line
+    let parent = el.parentElement; // eslint-disable-line
+    while(parent){
+        if (selector) {
+            if (parent.matches(selector)) parents.push(parent);
+        } else parents.push(parent);
+        parent = parent.parentElement;
+    }
+    return parents;
+}
+function elementTransitionEnd(el, callback) {
+    function fireCallBack(e) {
+        if (e.target !== el) return;
+        callback.call(el, e);
+        el.removeEventListener("transitionend", fireCallBack);
+    }
+    if (callback) el.addEventListener("transitionend", fireCallBack);
+}
+function elementOuterSize(el, size, includeMargins) {
+    const window1 = (0, _ssrWindowEsmMjs.a)();
+    if (includeMargins) return el[size === "width" ? "offsetWidth" : "offsetHeight"] + parseFloat(window1.getComputedStyle(el, null).getPropertyValue(size === "width" ? "margin-right" : "margin-top")) + parseFloat(window1.getComputedStyle(el, null).getPropertyValue(size === "width" ? "margin-left" : "margin-bottom"));
+    return el.offsetWidth;
+}
+function makeElementsArray(el) {
+    return (Array.isArray(el) ? el : [
+        el
+    ]).filter((e)=>!!e);
+}
 
-},{"216950d480ca88d9":"j9GCc"}],"7DfAI":[function(require,module,exports) {
+},{"./ssr-window.esm.mjs":"th8PY","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"8B2US":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "MACHINE_URL", ()=>MACHINE_URL);
+const MACHINE_URL = {
+    athena: new URL(require("15d550a0fef5a13b")),
+    pegasus: new URL(require("13997ae00f13a95e")),
+    ares: new URL(require("8380c77858aafd38")),
+    aes: new URL(require("8380c77858aafd38")),
+    are: new URL(require("8380c77858aafd38")),
+    res: new URL(require("8380c77858aafd38"))
+};
+
+},{"15d550a0fef5a13b":"6DbvE","13997ae00f13a95e":"4XNtA","8380c77858aafd38":"iltlr","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"6DbvE":[function(require,module,exports) {
+module.exports = require("bce0fd9a09c24271").getBundleURL("hcaXs") + "athena-s3.12d71aff.png" + "?" + Date.now();
+
+},{"bce0fd9a09c24271":"j9GCc"}],"4XNtA":[function(require,module,exports) {
+module.exports = require("5f6b53f564c08791").getBundleURL("hcaXs") + "pegasus.904ae486.png" + "?" + Date.now();
+
+},{"5f6b53f564c08791":"j9GCc"}],"iltlr":[function(require,module,exports) {
+module.exports = require("86569c199341a5a9").getBundleURL("hcaXs") + "ares-1.cff3e6bb.png" + "?" + Date.now();
+
+},{"86569c199341a5a9":"j9GCc"}],"cF4C3":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "PATNERS_URL", ()=>PATNERS_URL);
+parcelHelpers.export(exports, "PROUDLY_URL", ()=>PROUDLY_URL);
+const PATNERS_URL = {
+    omron: new URL(require("58b6d33d306d3d31")),
+    prefered: new URL(require("c2e53d9b709adba1")),
+    eis: new URL(require("226855b9a8db0f1"))
+};
+const PROUDLY_URL = {
+    bakerSland: new URL(require("de587c6fd1f1781d")),
+    bakery: new URL(require("913a0b3d19e62dc8")),
+    cederlane: new URL(require("ec191a811c98b395")),
+    coldship: new URL(require("8b8f480c0cbd61c0")),
+    delPrado: new URL(require("7c734d1f4bf41370")),
+    dr: new URL(require("9a85e68e92526d33")),
+    hards: new URL(require("79631e6a7b94637a")),
+    kermaning: new URL(require("f90683ad52eee3b2")),
+    onceAgain: new URL(require("d3798edb7a3d5582")),
+    sopaCreek: new URL(require("cb83be4419e2a9d9")),
+    tarantino: new URL(require("8a2bd600ac72e891")),
+    urobake: new URL(require("a9a54c4a76d836db")),
+    wow: new URL(require("fecbb4805eee632b"))
+};
+
+},{"58b6d33d306d3d31":"7RyCs","c2e53d9b709adba1":"OEfmr","226855b9a8db0f1":"gAeCg","de587c6fd1f1781d":"gg6q7","913a0b3d19e62dc8":"iVPzC","ec191a811c98b395":"hHqNn","8b8f480c0cbd61c0":"6hIdw","7c734d1f4bf41370":"Y0DfY","9a85e68e92526d33":"7SntC","79631e6a7b94637a":"iPwxF","f90683ad52eee3b2":"53fZd","d3798edb7a3d5582":"3vrca","cb83be4419e2a9d9":"faJXz","8a2bd600ac72e891":"eAtIS","a9a54c4a76d836db":"gBP03","fecbb4805eee632b":"5uGD0","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"7RyCs":[function(require,module,exports) {
+module.exports = require("11f02f015448205e").getBundleURL("hcaXs") + "omron.2212cb3c.png" + "?" + Date.now();
+
+},{"11f02f015448205e":"j9GCc"}],"OEfmr":[function(require,module,exports) {
+module.exports = require("87bca2a57df1863a").getBundleURL("hcaXs") + "prefered.853e91fe.png" + "?" + Date.now();
+
+},{"87bca2a57df1863a":"j9GCc"}],"gAeCg":[function(require,module,exports) {
+module.exports = require("1027231ee2b97af4").getBundleURL("hcaXs") + "eis.63538add.png" + "?" + Date.now();
+
+},{"1027231ee2b97af4":"j9GCc"}],"gg6q7":[function(require,module,exports) {
+module.exports = require("66dc8941346a42a4").getBundleURL("hcaXs") + "bakerSland.58c4a554.png" + "?" + Date.now();
+
+},{"66dc8941346a42a4":"j9GCc"}],"iVPzC":[function(require,module,exports) {
+module.exports = require("12d8307a4c383f50").getBundleURL("hcaXs") + "bakery.665f0331.png" + "?" + Date.now();
+
+},{"12d8307a4c383f50":"j9GCc"}],"hHqNn":[function(require,module,exports) {
+module.exports = require("d17338c03a1dc5d0").getBundleURL("hcaXs") + "cederlane.623ce38c.png" + "?" + Date.now();
+
+},{"d17338c03a1dc5d0":"j9GCc"}],"6hIdw":[function(require,module,exports) {
+module.exports = require("a65626f4140d2c8c").getBundleURL("hcaXs") + "coldship.4d523766.png" + "?" + Date.now();
+
+},{"a65626f4140d2c8c":"j9GCc"}],"Y0DfY":[function(require,module,exports) {
+module.exports = require("ce39607b82a482f8").getBundleURL("hcaXs") + "delPrado.7d13694b.png" + "?" + Date.now();
+
+},{"ce39607b82a482f8":"j9GCc"}],"7SntC":[function(require,module,exports) {
+module.exports = require("64d86d59cce27531").getBundleURL("hcaXs") + "dr.ae6cea55.png" + "?" + Date.now();
+
+},{"64d86d59cce27531":"j9GCc"}],"iPwxF":[function(require,module,exports) {
+module.exports = require("4b8e4651d0ab05ea").getBundleURL("hcaXs") + "hards.1974a93a.png" + "?" + Date.now();
+
+},{"4b8e4651d0ab05ea":"j9GCc"}],"53fZd":[function(require,module,exports) {
+module.exports = require("10651527c801f0e0").getBundleURL("hcaXs") + "kermaning.9f3def3c.png" + "?" + Date.now();
+
+},{"10651527c801f0e0":"j9GCc"}],"3vrca":[function(require,module,exports) {
+module.exports = require("e12458240a8dbead").getBundleURL("hcaXs") + "onceAgain.46853c00.png" + "?" + Date.now();
+
+},{"e12458240a8dbead":"j9GCc"}],"faJXz":[function(require,module,exports) {
+module.exports = require("df6c6abcab1bc19").getBundleURL("hcaXs") + "soapCreek.445c754e.png" + "?" + Date.now();
+
+},{"df6c6abcab1bc19":"j9GCc"}],"eAtIS":[function(require,module,exports) {
+module.exports = require("fda5d316ab31ea28").getBundleURL("hcaXs") + "tarantino.f69f7c4a.png" + "?" + Date.now();
+
+},{"fda5d316ab31ea28":"j9GCc"}],"gBP03":[function(require,module,exports) {
+module.exports = require("4700b8f9e4455a7c").getBundleURL("hcaXs") + "urobake.828b32dc.png" + "?" + Date.now();
+
+},{"4700b8f9e4455a7c":"j9GCc"}],"5uGD0":[function(require,module,exports) {
+module.exports = require("64e1cb284862bf98").getBundleURL("hcaXs") + "wow.aa10da21.png" + "?" + Date.now();
+
+},{"64e1cb284862bf98":"j9GCc"}],"7DfAI":[function(require,module,exports) {
 /**
  * The Ease class provides a collection of easing functions for use with tween.js.
  */ var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
@@ -41157,6 +44746,3201 @@ var exports = {
     update: update
 };
 
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}]},["fbff6","ait1o"], "ait1o", "parcelRequire94c2")
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"e5jie":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "EffectComposer", ()=>EffectComposer);
+var _three = require("three");
+var _copyShaderJs = require("../shaders/CopyShader.js");
+var _shaderPassJs = require("./ShaderPass.js");
+var _maskPassJs = require("./MaskPass.js");
+class EffectComposer {
+    constructor(renderer, renderTarget){
+        this.renderer = renderer;
+        this._pixelRatio = renderer.getPixelRatio();
+        if (renderTarget === undefined) {
+            const size = renderer.getSize(new (0, _three.Vector2)());
+            this._width = size.width;
+            this._height = size.height;
+            renderTarget = new (0, _three.WebGLRenderTarget)(this._width * this._pixelRatio, this._height * this._pixelRatio, {
+                type: (0, _three.HalfFloatType)
+            });
+            renderTarget.texture.name = "EffectComposer.rt1";
+        } else {
+            this._width = renderTarget.width;
+            this._height = renderTarget.height;
+        }
+        this.renderTarget1 = renderTarget;
+        this.renderTarget2 = renderTarget.clone();
+        this.renderTarget2.texture.name = "EffectComposer.rt2";
+        this.writeBuffer = this.renderTarget1;
+        this.readBuffer = this.renderTarget2;
+        this.renderToScreen = true;
+        this.passes = [];
+        this.copyPass = new (0, _shaderPassJs.ShaderPass)((0, _copyShaderJs.CopyShader));
+        this.copyPass.material.blending = (0, _three.NoBlending);
+        this.clock = new (0, _three.Clock)();
+    }
+    swapBuffers() {
+        const tmp = this.readBuffer;
+        this.readBuffer = this.writeBuffer;
+        this.writeBuffer = tmp;
+    }
+    addPass(pass) {
+        this.passes.push(pass);
+        pass.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
+    }
+    insertPass(pass, index) {
+        this.passes.splice(index, 0, pass);
+        pass.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
+    }
+    removePass(pass) {
+        const index = this.passes.indexOf(pass);
+        if (index !== -1) this.passes.splice(index, 1);
+    }
+    isLastEnabledPass(passIndex) {
+        for(let i = passIndex + 1; i < this.passes.length; i++){
+            if (this.passes[i].enabled) return false;
+        }
+        return true;
+    }
+    render(deltaTime) {
+        // deltaTime value is in seconds
+        if (deltaTime === undefined) deltaTime = this.clock.getDelta();
+        const currentRenderTarget = this.renderer.getRenderTarget();
+        let maskActive = false;
+        for(let i = 0, il = this.passes.length; i < il; i++){
+            const pass = this.passes[i];
+            if (pass.enabled === false) continue;
+            pass.renderToScreen = this.renderToScreen && this.isLastEnabledPass(i);
+            pass.render(this.renderer, this.writeBuffer, this.readBuffer, deltaTime, maskActive);
+            if (pass.needsSwap) {
+                if (maskActive) {
+                    const context = this.renderer.getContext();
+                    const stencil = this.renderer.state.buffers.stencil;
+                    //context.stencilFunc( context.NOTEQUAL, 1, 0xffffffff );
+                    stencil.setFunc(context.NOTEQUAL, 1, 0xffffffff);
+                    this.copyPass.render(this.renderer, this.writeBuffer, this.readBuffer, deltaTime);
+                    //context.stencilFunc( context.EQUAL, 1, 0xffffffff );
+                    stencil.setFunc(context.EQUAL, 1, 0xffffffff);
+                }
+                this.swapBuffers();
+            }
+            if ((0, _maskPassJs.MaskPass) !== undefined) {
+                if (pass instanceof (0, _maskPassJs.MaskPass)) maskActive = true;
+                else if (pass instanceof (0, _maskPassJs.ClearMaskPass)) maskActive = false;
+            }
+        }
+        this.renderer.setRenderTarget(currentRenderTarget);
+    }
+    reset(renderTarget) {
+        if (renderTarget === undefined) {
+            const size = this.renderer.getSize(new (0, _three.Vector2)());
+            this._pixelRatio = this.renderer.getPixelRatio();
+            this._width = size.width;
+            this._height = size.height;
+            renderTarget = this.renderTarget1.clone();
+            renderTarget.setSize(this._width * this._pixelRatio, this._height * this._pixelRatio);
+        }
+        this.renderTarget1.dispose();
+        this.renderTarget2.dispose();
+        this.renderTarget1 = renderTarget;
+        this.renderTarget2 = renderTarget.clone();
+        this.writeBuffer = this.renderTarget1;
+        this.readBuffer = this.renderTarget2;
+    }
+    setSize(width, height) {
+        this._width = width;
+        this._height = height;
+        const effectiveWidth = this._width * this._pixelRatio;
+        const effectiveHeight = this._height * this._pixelRatio;
+        this.renderTarget1.setSize(effectiveWidth, effectiveHeight);
+        this.renderTarget2.setSize(effectiveWidth, effectiveHeight);
+        for(let i = 0; i < this.passes.length; i++)this.passes[i].setSize(effectiveWidth, effectiveHeight);
+    }
+    setPixelRatio(pixelRatio) {
+        this._pixelRatio = pixelRatio;
+        this.setSize(this._width, this._height);
+    }
+    dispose() {
+        this.renderTarget1.dispose();
+        this.renderTarget2.dispose();
+        this.copyPass.dispose();
+    }
+}
+
+},{"three":"ktPTu","../shaders/CopyShader.js":"d0PyX","./ShaderPass.js":"5IxTN","./MaskPass.js":"jn76N","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"d0PyX":[function(require,module,exports) {
+/**
+ * Full-screen textured quad shader
+ */ var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "CopyShader", ()=>CopyShader);
+const CopyShader = {
+    name: "CopyShader",
+    uniforms: {
+        "tDiffuse": {
+            value: null
+        },
+        "opacity": {
+            value: 1.0
+        }
+    },
+    vertexShader: /* glsl */ `
+
+		varying vec2 vUv;
+
+		void main() {
+
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+		}`,
+    fragmentShader: /* glsl */ `
+
+		uniform float opacity;
+
+		uniform sampler2D tDiffuse;
+
+		varying vec2 vUv;
+
+		void main() {
+
+			vec4 texel = texture2D( tDiffuse, vUv );
+			gl_FragColor = opacity * texel;
+
+
+		}`
+};
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"5IxTN":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "ShaderPass", ()=>ShaderPass);
+var _three = require("three");
+var _passJs = require("./Pass.js");
+class ShaderPass extends (0, _passJs.Pass) {
+    constructor(shader, textureID){
+        super();
+        this.textureID = textureID !== undefined ? textureID : "tDiffuse";
+        if (shader instanceof (0, _three.ShaderMaterial)) {
+            this.uniforms = shader.uniforms;
+            this.material = shader;
+        } else if (shader) {
+            this.uniforms = (0, _three.UniformsUtils).clone(shader.uniforms);
+            this.material = new (0, _three.ShaderMaterial)({
+                name: shader.name !== undefined ? shader.name : "unspecified",
+                defines: Object.assign({}, shader.defines),
+                uniforms: this.uniforms,
+                vertexShader: shader.vertexShader,
+                fragmentShader: shader.fragmentShader
+            });
+        }
+        this.fsQuad = new (0, _passJs.FullScreenQuad)(this.material);
+    }
+    render(renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */ ) {
+        if (this.uniforms[this.textureID]) this.uniforms[this.textureID].value = readBuffer.texture;
+        this.fsQuad.material = this.material;
+        if (this.renderToScreen) {
+            renderer.setRenderTarget(null);
+            this.fsQuad.render(renderer);
+        } else {
+            renderer.setRenderTarget(writeBuffer);
+            // TODO: Avoid using autoClear properties, see https://github.com/mrdoob/three.js/pull/15571#issuecomment-465669600
+            if (this.clear) renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
+            this.fsQuad.render(renderer);
+        }
+    }
+    dispose() {
+        this.material.dispose();
+        this.fsQuad.dispose();
+    }
+}
+
+},{"three":"ktPTu","./Pass.js":"i2IfB","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"i2IfB":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "Pass", ()=>Pass);
+parcelHelpers.export(exports, "FullScreenQuad", ()=>FullScreenQuad);
+var _three = require("three");
+class Pass {
+    constructor(){
+        this.isPass = true;
+        // if set to true, the pass is processed by the composer
+        this.enabled = true;
+        // if set to true, the pass indicates to swap read and write buffer after rendering
+        this.needsSwap = true;
+        // if set to true, the pass clears its buffer before rendering
+        this.clear = false;
+        // if set to true, the result of the pass is rendered to screen. This is set automatically by EffectComposer.
+        this.renderToScreen = false;
+    }
+    setSize() {}
+    render() {
+        console.error("THREE.Pass: .render() must be implemented in derived pass.");
+    }
+    dispose() {}
+}
+// Helper for passes that need to fill the viewport with a single quad.
+const _camera = new (0, _three.OrthographicCamera)(-1, 1, 1, -1, 0, 1);
+// https://github.com/mrdoob/three.js/pull/21358
+class FullscreenTriangleGeometry extends (0, _three.BufferGeometry) {
+    constructor(){
+        super();
+        this.setAttribute("position", new (0, _three.Float32BufferAttribute)([
+            -1,
+            3,
+            0,
+            -1,
+            -1,
+            0,
+            3,
+            -1,
+            0
+        ], 3));
+        this.setAttribute("uv", new (0, _three.Float32BufferAttribute)([
+            0,
+            2,
+            0,
+            0,
+            2,
+            0
+        ], 2));
+    }
+}
+const _geometry = new FullscreenTriangleGeometry();
+class FullScreenQuad {
+    constructor(material){
+        this._mesh = new (0, _three.Mesh)(_geometry, material);
+    }
+    dispose() {
+        this._mesh.geometry.dispose();
+    }
+    render(renderer) {
+        renderer.render(this._mesh, _camera);
+    }
+    get material() {
+        return this._mesh.material;
+    }
+    set material(value) {
+        this._mesh.material = value;
+    }
+}
+
+},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"jn76N":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "MaskPass", ()=>MaskPass);
+parcelHelpers.export(exports, "ClearMaskPass", ()=>ClearMaskPass);
+var _passJs = require("./Pass.js");
+class MaskPass extends (0, _passJs.Pass) {
+    constructor(scene, camera){
+        super();
+        this.scene = scene;
+        this.camera = camera;
+        this.clear = true;
+        this.needsSwap = false;
+        this.inverse = false;
+    }
+    render(renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */ ) {
+        const context = renderer.getContext();
+        const state = renderer.state;
+        // don't update color or depth
+        state.buffers.color.setMask(false);
+        state.buffers.depth.setMask(false);
+        // lock buffers
+        state.buffers.color.setLocked(true);
+        state.buffers.depth.setLocked(true);
+        // set up stencil
+        let writeValue, clearValue;
+        if (this.inverse) {
+            writeValue = 0;
+            clearValue = 1;
+        } else {
+            writeValue = 1;
+            clearValue = 0;
+        }
+        state.buffers.stencil.setTest(true);
+        state.buffers.stencil.setOp(context.REPLACE, context.REPLACE, context.REPLACE);
+        state.buffers.stencil.setFunc(context.ALWAYS, writeValue, 0xffffffff);
+        state.buffers.stencil.setClear(clearValue);
+        state.buffers.stencil.setLocked(true);
+        // draw into the stencil buffer
+        renderer.setRenderTarget(readBuffer);
+        if (this.clear) renderer.clear();
+        renderer.render(this.scene, this.camera);
+        renderer.setRenderTarget(writeBuffer);
+        if (this.clear) renderer.clear();
+        renderer.render(this.scene, this.camera);
+        // unlock color and depth buffer and make them writable for subsequent rendering/clearing
+        state.buffers.color.setLocked(false);
+        state.buffers.depth.setLocked(false);
+        state.buffers.color.setMask(true);
+        state.buffers.depth.setMask(true);
+        // only render where stencil is set to 1
+        state.buffers.stencil.setLocked(false);
+        state.buffers.stencil.setFunc(context.EQUAL, 1, 0xffffffff); // draw if == 1
+        state.buffers.stencil.setOp(context.KEEP, context.KEEP, context.KEEP);
+        state.buffers.stencil.setLocked(true);
+    }
+}
+class ClearMaskPass extends (0, _passJs.Pass) {
+    constructor(){
+        super();
+        this.needsSwap = false;
+    }
+    render(renderer /*, writeBuffer, readBuffer, deltaTime, maskActive */ ) {
+        renderer.state.buffers.stencil.setLocked(false);
+        renderer.state.buffers.stencil.setTest(false);
+    }
+}
+
+},{"./Pass.js":"i2IfB","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"hXnUO":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "RenderPass", ()=>RenderPass);
+var _three = require("three");
+var _passJs = require("./Pass.js");
+class RenderPass extends (0, _passJs.Pass) {
+    constructor(scene, camera, overrideMaterial = null, clearColor = null, clearAlpha = null){
+        super();
+        this.scene = scene;
+        this.camera = camera;
+        this.overrideMaterial = overrideMaterial;
+        this.clearColor = clearColor;
+        this.clearAlpha = clearAlpha;
+        this.clear = true;
+        this.clearDepth = false;
+        this.needsSwap = false;
+        this._oldClearColor = new (0, _three.Color)();
+    }
+    render(renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */ ) {
+        const oldAutoClear = renderer.autoClear;
+        renderer.autoClear = false;
+        let oldClearAlpha, oldOverrideMaterial;
+        if (this.overrideMaterial !== null) {
+            oldOverrideMaterial = this.scene.overrideMaterial;
+            this.scene.overrideMaterial = this.overrideMaterial;
+        }
+        if (this.clearColor !== null) {
+            renderer.getClearColor(this._oldClearColor);
+            renderer.setClearColor(this.clearColor);
+        }
+        if (this.clearAlpha !== null) {
+            oldClearAlpha = renderer.getClearAlpha();
+            renderer.setClearAlpha(this.clearAlpha);
+        }
+        if (this.clearDepth == true) renderer.clearDepth();
+        renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
+        if (this.clear === true) // TODO: Avoid using autoClear properties, see https://github.com/mrdoob/three.js/pull/15571#issuecomment-465669600
+        renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
+        renderer.render(this.scene, this.camera);
+        // restore
+        if (this.clearColor !== null) renderer.setClearColor(this._oldClearColor);
+        if (this.clearAlpha !== null) renderer.setClearAlpha(oldClearAlpha);
+        if (this.overrideMaterial !== null) this.scene.overrideMaterial = oldOverrideMaterial;
+        renderer.autoClear = oldAutoClear;
+    }
+}
+
+},{"three":"ktPTu","./Pass.js":"i2IfB","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"bggV1":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "OutputPass", ()=>OutputPass);
+var _three = require("three");
+var _passJs = require("./Pass.js");
+var _outputShaderJs = require("../shaders/OutputShader.js");
+class OutputPass extends (0, _passJs.Pass) {
+    constructor(){
+        super();
+        //
+        const shader = (0, _outputShaderJs.OutputShader);
+        this.uniforms = (0, _three.UniformsUtils).clone(shader.uniforms);
+        this.material = new (0, _three.RawShaderMaterial)({
+            name: shader.name,
+            uniforms: this.uniforms,
+            vertexShader: shader.vertexShader,
+            fragmentShader: shader.fragmentShader
+        });
+        this.fsQuad = new (0, _passJs.FullScreenQuad)(this.material);
+        // internal cache
+        this._outputColorSpace = null;
+        this._toneMapping = null;
+    }
+    render(renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */ ) {
+        this.uniforms["tDiffuse"].value = readBuffer.texture;
+        this.uniforms["toneMappingExposure"].value = renderer.toneMappingExposure;
+        // rebuild defines if required
+        if (this._outputColorSpace !== renderer.outputColorSpace || this._toneMapping !== renderer.toneMapping) {
+            this._outputColorSpace = renderer.outputColorSpace;
+            this._toneMapping = renderer.toneMapping;
+            this.material.defines = {};
+            if ((0, _three.ColorManagement).getTransfer(this._outputColorSpace) === (0, _three.SRGBTransfer)) this.material.defines.SRGB_TRANSFER = "";
+            if (this._toneMapping === (0, _three.LinearToneMapping)) this.material.defines.LINEAR_TONE_MAPPING = "";
+            else if (this._toneMapping === (0, _three.ReinhardToneMapping)) this.material.defines.REINHARD_TONE_MAPPING = "";
+            else if (this._toneMapping === (0, _three.CineonToneMapping)) this.material.defines.CINEON_TONE_MAPPING = "";
+            else if (this._toneMapping === (0, _three.ACESFilmicToneMapping)) this.material.defines.ACES_FILMIC_TONE_MAPPING = "";
+            else if (this._toneMapping === (0, _three.AgXToneMapping)) this.material.defines.AGX_TONE_MAPPING = "";
+            this.material.needsUpdate = true;
+        }
+        //
+        if (this.renderToScreen === true) {
+            renderer.setRenderTarget(null);
+            this.fsQuad.render(renderer);
+        } else {
+            renderer.setRenderTarget(writeBuffer);
+            if (this.clear) renderer.clear(renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil);
+            this.fsQuad.render(renderer);
+        }
+    }
+    dispose() {
+        this.material.dispose();
+        this.fsQuad.dispose();
+    }
+}
+
+},{"three":"ktPTu","./Pass.js":"i2IfB","../shaders/OutputShader.js":"76ZI2","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"76ZI2":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "OutputShader", ()=>OutputShader);
+const OutputShader = {
+    name: "OutputShader",
+    uniforms: {
+        "tDiffuse": {
+            value: null
+        },
+        "toneMappingExposure": {
+            value: 1
+        }
+    },
+    vertexShader: /* glsl */ `
+		precision highp float;
+
+		uniform mat4 modelViewMatrix;
+		uniform mat4 projectionMatrix;
+
+		attribute vec3 position;
+		attribute vec2 uv;
+
+		varying vec2 vUv;
+
+		void main() {
+
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+		}`,
+    fragmentShader: /* glsl */ `
+	
+		precision highp float;
+
+		uniform sampler2D tDiffuse;
+
+		#include <tonemapping_pars_fragment>
+		#include <colorspace_pars_fragment>
+
+		varying vec2 vUv;
+
+		void main() {
+
+			gl_FragColor = texture2D( tDiffuse, vUv );
+
+			// tone mapping
+
+			#ifdef LINEAR_TONE_MAPPING
+
+				gl_FragColor.rgb = LinearToneMapping( gl_FragColor.rgb );
+
+			#elif defined( REINHARD_TONE_MAPPING )
+
+				gl_FragColor.rgb = ReinhardToneMapping( gl_FragColor.rgb );
+
+			#elif defined( CINEON_TONE_MAPPING )
+
+				gl_FragColor.rgb = OptimizedCineonToneMapping( gl_FragColor.rgb );
+
+			#elif defined( ACES_FILMIC_TONE_MAPPING )
+
+				gl_FragColor.rgb = ACESFilmicToneMapping( gl_FragColor.rgb );
+
+			#elif defined( AGX_TONE_MAPPING )
+
+				gl_FragColor.rgb = AgXToneMapping( gl_FragColor.rgb );
+
+			#endif
+
+			// color space
+
+			#ifdef SRGB_TRANSFER
+
+				gl_FragColor = sRGBTransferOETF( gl_FragColor );
+
+			#endif
+
+		}`
+};
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"dW5AT":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "GTAOPass", ()=>GTAOPass);
+var _three = require("three");
+var _passJs = require("./Pass.js");
+var _gtaoshaderJs = require("../shaders/GTAOShader.js");
+var _poissonDenoiseShaderJs = require("../shaders/PoissonDenoiseShader.js");
+var _copyShaderJs = require("../shaders/CopyShader.js");
+var _simplexNoiseJs = require("../math/SimplexNoise.js");
+class GTAOPass extends (0, _passJs.Pass) {
+    constructor(scene, camera, width, height, parameters, aoParameters, pdParameters){
+        super();
+        this.width = width !== undefined ? width : 512;
+        this.height = height !== undefined ? height : 512;
+        this.clear = true;
+        this.camera = camera;
+        this.scene = scene;
+        this.output = 0;
+        this._renderGBuffer = true;
+        this._visibilityCache = new Map();
+        this.blendIntensity = 1.;
+        this.pdRings = 2.;
+        this.pdRadiusExponent = 2.;
+        this.pdSamples = 16;
+        this.gtaoNoiseTexture = (0, _gtaoshaderJs.generateMagicSquareNoise)();
+        this.pdNoiseTexture = this.generateNoise();
+        this.gtaoRenderTarget = new (0, _three.WebGLRenderTarget)(this.width, this.height, {
+            type: (0, _three.HalfFloatType)
+        });
+        this.pdRenderTarget = this.gtaoRenderTarget.clone();
+        this.gtaoMaterial = new (0, _three.ShaderMaterial)({
+            defines: Object.assign({}, (0, _gtaoshaderJs.GTAOShader).defines),
+            uniforms: (0, _three.UniformsUtils).clone((0, _gtaoshaderJs.GTAOShader).uniforms),
+            vertexShader: (0, _gtaoshaderJs.GTAOShader).vertexShader,
+            fragmentShader: (0, _gtaoshaderJs.GTAOShader).fragmentShader,
+            blending: (0, _three.NoBlending),
+            depthTest: false,
+            depthWrite: false
+        });
+        this.gtaoMaterial.definesPERSPECTIVE_CAMERA = this.camera.isPerspectiveCamera ? 1 : 0;
+        this.gtaoMaterial.uniforms.tNoise.value = this.gtaoNoiseTexture;
+        this.gtaoMaterial.uniforms.resolution.value.set(this.width, this.height);
+        this.gtaoMaterial.uniforms.cameraNear.value = this.camera.near;
+        this.gtaoMaterial.uniforms.cameraFar.value = this.camera.far;
+        this.normalMaterial = new (0, _three.MeshNormalMaterial)();
+        this.normalMaterial.blending = (0, _three.NoBlending);
+        this.pdMaterial = new (0, _three.ShaderMaterial)({
+            defines: Object.assign({}, (0, _poissonDenoiseShaderJs.PoissonDenoiseShader).defines),
+            uniforms: (0, _three.UniformsUtils).clone((0, _poissonDenoiseShaderJs.PoissonDenoiseShader).uniforms),
+            vertexShader: (0, _poissonDenoiseShaderJs.PoissonDenoiseShader).vertexShader,
+            fragmentShader: (0, _poissonDenoiseShaderJs.PoissonDenoiseShader).fragmentShader,
+            depthTest: false,
+            depthWrite: false
+        });
+        this.pdMaterial.uniforms.tDiffuse.value = this.gtaoRenderTarget.texture;
+        this.pdMaterial.uniforms.tNoise.value = this.pdNoiseTexture;
+        this.pdMaterial.uniforms.resolution.value.set(this.width, this.height);
+        this.pdMaterial.uniforms.lumaPhi.value = 10;
+        this.pdMaterial.uniforms.depthPhi.value = 2;
+        this.pdMaterial.uniforms.normalPhi.value = 3;
+        this.pdMaterial.uniforms.radius.value = 8;
+        this.depthRenderMaterial = new (0, _three.ShaderMaterial)({
+            defines: Object.assign({}, (0, _gtaoshaderJs.GTAODepthShader).defines),
+            uniforms: (0, _three.UniformsUtils).clone((0, _gtaoshaderJs.GTAODepthShader).uniforms),
+            vertexShader: (0, _gtaoshaderJs.GTAODepthShader).vertexShader,
+            fragmentShader: (0, _gtaoshaderJs.GTAODepthShader).fragmentShader,
+            blending: (0, _three.NoBlending)
+        });
+        this.depthRenderMaterial.uniforms.cameraNear.value = this.camera.near;
+        this.depthRenderMaterial.uniforms.cameraFar.value = this.camera.far;
+        this.copyMaterial = new (0, _three.ShaderMaterial)({
+            uniforms: (0, _three.UniformsUtils).clone((0, _copyShaderJs.CopyShader).uniforms),
+            vertexShader: (0, _copyShaderJs.CopyShader).vertexShader,
+            fragmentShader: (0, _copyShaderJs.CopyShader).fragmentShader,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+            blendSrc: (0, _three.DstColorFactor),
+            blendDst: (0, _three.ZeroFactor),
+            blendEquation: (0, _three.AddEquation),
+            blendSrcAlpha: (0, _three.DstAlphaFactor),
+            blendDstAlpha: (0, _three.ZeroFactor),
+            blendEquationAlpha: (0, _three.AddEquation)
+        });
+        this.blendMaterial = new (0, _three.ShaderMaterial)({
+            uniforms: (0, _three.UniformsUtils).clone((0, _gtaoshaderJs.GTAOBlendShader).uniforms),
+            vertexShader: (0, _gtaoshaderJs.GTAOBlendShader).vertexShader,
+            fragmentShader: (0, _gtaoshaderJs.GTAOBlendShader).fragmentShader,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+            blending: (0, _three.CustomBlending),
+            blendSrc: (0, _three.DstColorFactor),
+            blendDst: (0, _three.ZeroFactor),
+            blendEquation: (0, _three.AddEquation),
+            blendSrcAlpha: (0, _three.DstAlphaFactor),
+            blendDstAlpha: (0, _three.ZeroFactor),
+            blendEquationAlpha: (0, _three.AddEquation)
+        });
+        this.fsQuad = new (0, _passJs.FullScreenQuad)(null);
+        this.originalClearColor = new (0, _three.Color)();
+        this.setGBuffer(parameters ? parameters.depthTexture : undefined, parameters ? parameters.normalTexture : undefined);
+        if (aoParameters !== undefined) this.updateGtaoMaterial(aoParameters);
+        if (pdParameters !== undefined) this.updatePdMaterial(pdParameters);
+    }
+    dispose() {
+        this.gtaoNoiseTexture.dispose();
+        this.pdNoiseTexture.dispose();
+        this.normalRenderTarget.dispose();
+        this.gtaoRenderTarget.dispose();
+        this.pdRenderTarget.dispose();
+        this.normalMaterial.dispose();
+        this.pdMaterial.dispose();
+        this.copyMaterial.dispose();
+        this.depthRenderMaterial.dispose();
+        this.fsQuad.dispose();
+    }
+    setGBuffer(depthTexture, normalTexture) {
+        if (depthTexture !== undefined) {
+            this.depthTexture = depthTexture;
+            this.normalTexture = normalTexture;
+            this._renderGBuffer = false;
+        } else {
+            this.depthTexture = new (0, _three.DepthTexture)();
+            this.depthTexture.format = (0, _three.DepthStencilFormat);
+            this.depthTexture.type = (0, _three.UnsignedInt248Type);
+            this.normalRenderTarget = new (0, _three.WebGLRenderTarget)(this.width, this.height, {
+                minFilter: (0, _three.NearestFilter),
+                magFilter: (0, _three.NearestFilter),
+                type: (0, _three.HalfFloatType),
+                depthTexture: this.depthTexture
+            });
+            this.normalTexture = this.normalRenderTarget.texture;
+            this._renderGBuffer = true;
+        }
+        const normalVectorType = this.normalTexture ? 1 : 0;
+        const depthValueSource = this.depthTexture === this.normalTexture ? "w" : "x";
+        this.gtaoMaterial.defines.NORMAL_VECTOR_TYPE = normalVectorType;
+        this.gtaoMaterial.defines.DEPTH_SWIZZLING = depthValueSource;
+        this.gtaoMaterial.uniforms.tNormal.value = this.normalTexture;
+        this.gtaoMaterial.uniforms.tDepth.value = this.depthTexture;
+        this.pdMaterial.defines.NORMAL_VECTOR_TYPE = normalVectorType;
+        this.pdMaterial.defines.DEPTH_SWIZZLING = depthValueSource;
+        this.pdMaterial.uniforms.tNormal.value = this.normalTexture;
+        this.pdMaterial.uniforms.tDepth.value = this.depthTexture;
+        this.depthRenderMaterial.uniforms.tDepth.value = this.normalRenderTarget.depthTexture;
+    }
+    setSceneClipBox(box) {
+        if (box) {
+            this.gtaoMaterial.needsUpdate = this.gtaoMaterial.defines.SCENE_CLIP_BOX !== 1;
+            this.gtaoMaterial.defines.SCENE_CLIP_BOX = 1;
+            this.gtaoMaterial.uniforms.sceneBoxMin.value.copy(box.min);
+            this.gtaoMaterial.uniforms.sceneBoxMax.value.copy(box.max);
+        } else {
+            this.gtaoMaterial.needsUpdate = this.gtaoMaterial.defines.SCENE_CLIP_BOX === 0;
+            this.gtaoMaterial.defines.SCENE_CLIP_BOX = 0;
+        }
+    }
+    updateGtaoMaterial(parameters) {
+        if (parameters.radius !== undefined) this.gtaoMaterial.uniforms.radius.value = parameters.radius;
+        if (parameters.distanceExponent !== undefined) this.gtaoMaterial.uniforms.distanceExponent.value = parameters.distanceExponent;
+        if (parameters.thickness !== undefined) this.gtaoMaterial.uniforms.thickness.value = parameters.thickness;
+        if (parameters.distanceFallOff !== undefined) {
+            this.gtaoMaterial.uniforms.distanceFallOff.value = parameters.distanceFallOff;
+            this.gtaoMaterial.needsUpdate = true;
+        }
+        if (parameters.scale !== undefined) this.gtaoMaterial.uniforms.scale.value = parameters.scale;
+        if (parameters.samples !== undefined && parameters.samples !== this.gtaoMaterial.defines.SAMPLES) {
+            this.gtaoMaterial.defines.SAMPLES = parameters.samples;
+            this.gtaoMaterial.needsUpdate = true;
+        }
+        if (parameters.screenSpaceRadius !== undefined && (parameters.screenSpaceRadius ? 1 : 0) !== this.gtaoMaterial.defines.SCREEN_SPACE_RADIUS) {
+            this.gtaoMaterial.defines.SCREEN_SPACE_RADIUS = parameters.screenSpaceRadius ? 1 : 0;
+            this.gtaoMaterial.needsUpdate = true;
+        }
+    }
+    updatePdMaterial(parameters) {
+        let updateShader = false;
+        if (parameters.lumaPhi !== undefined) this.pdMaterial.uniforms.lumaPhi.value = parameters.lumaPhi;
+        if (parameters.depthPhi !== undefined) this.pdMaterial.uniforms.depthPhi.value = parameters.depthPhi;
+        if (parameters.normalPhi !== undefined) this.pdMaterial.uniforms.normalPhi.value = parameters.normalPhi;
+        if (parameters.radius !== undefined && parameters.radius !== this.radius) this.pdMaterial.uniforms.radius.value = parameters.radius;
+        if (parameters.radiusExponent !== undefined && parameters.radiusExponent !== this.pdRadiusExponent) {
+            this.pdRadiusExponent = parameters.radiusExponent;
+            updateShader = true;
+        }
+        if (parameters.rings !== undefined && parameters.rings !== this.pdRings) {
+            this.pdRings = parameters.rings;
+            updateShader = true;
+        }
+        if (parameters.samples !== undefined && parameters.samples !== this.pdSamples) {
+            this.pdSamples = parameters.samples;
+            updateShader = true;
+        }
+        if (updateShader) {
+            this.pdMaterial.defines.SAMPLES = this.pdSamples;
+            this.pdMaterial.defines.SAMPLE_VECTORS = (0, _poissonDenoiseShaderJs.generatePdSamplePointInitializer)(this.pdSamples, this.pdRings, this.pdRadiusExponent);
+            this.pdMaterial.needsUpdate = true;
+        }
+    }
+    render(renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */ ) {
+        // render normals and depth (honor only meshes, points and lines do not contribute to AO)
+        if (this._renderGBuffer) {
+            this.overrideVisibility();
+            this.renderOverride(renderer, this.normalMaterial, this.normalRenderTarget, 0x7777ff, 1.0);
+            this.restoreVisibility();
+        }
+        // render AO
+        this.gtaoMaterial.uniforms.cameraNear.value = this.camera.near;
+        this.gtaoMaterial.uniforms.cameraFar.value = this.camera.far;
+        this.gtaoMaterial.uniforms.cameraProjectionMatrix.value.copy(this.camera.projectionMatrix);
+        this.gtaoMaterial.uniforms.cameraProjectionMatrixInverse.value.copy(this.camera.projectionMatrixInverse);
+        this.gtaoMaterial.uniforms.cameraWorldMatrix.value.copy(this.camera.matrixWorld);
+        this.renderPass(renderer, this.gtaoMaterial, this.gtaoRenderTarget, 0xffffff, 1.0);
+        // render poisson denoise
+        this.pdMaterial.uniforms.cameraProjectionMatrixInverse.value.copy(this.camera.projectionMatrixInverse);
+        this.renderPass(renderer, this.pdMaterial, this.pdRenderTarget, 0xffffff, 1.0);
+        // output result to screen
+        switch(this.output){
+            case GTAOPass.OUTPUT.Diffuse:
+                this.copyMaterial.uniforms.tDiffuse.value = readBuffer.texture;
+                this.copyMaterial.blending = (0, _three.NoBlending);
+                this.renderPass(renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer);
+                break;
+            case GTAOPass.OUTPUT.AO:
+                this.copyMaterial.uniforms.tDiffuse.value = this.gtaoRenderTarget.texture;
+                this.copyMaterial.blending = (0, _three.NoBlending);
+                this.renderPass(renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer);
+                break;
+            case GTAOPass.OUTPUT.Denoise:
+                this.copyMaterial.uniforms.tDiffuse.value = this.pdRenderTarget.texture;
+                this.copyMaterial.blending = (0, _three.NoBlending);
+                this.renderPass(renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer);
+                break;
+            case GTAOPass.OUTPUT.Depth:
+                this.depthRenderMaterial.uniforms.cameraNear.value = this.camera.near;
+                this.depthRenderMaterial.uniforms.cameraFar.value = this.camera.far;
+                this.renderPass(renderer, this.depthRenderMaterial, this.renderToScreen ? null : writeBuffer);
+                break;
+            case GTAOPass.OUTPUT.Normal:
+                this.copyMaterial.uniforms.tDiffuse.value = this.normalRenderTarget.texture;
+                this.copyMaterial.blending = (0, _three.NoBlending);
+                this.renderPass(renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer);
+                break;
+            case GTAOPass.OUTPUT.Default:
+                this.copyMaterial.uniforms.tDiffuse.value = readBuffer.texture;
+                this.copyMaterial.blending = (0, _three.NoBlending);
+                this.renderPass(renderer, this.copyMaterial, this.renderToScreen ? null : writeBuffer);
+                this.blendMaterial.uniforms.intensity.value = this.blendIntensity;
+                this.blendMaterial.uniforms.tDiffuse.value = this.pdRenderTarget.texture;
+                this.renderPass(renderer, this.blendMaterial, this.renderToScreen ? null : writeBuffer);
+                break;
+            default:
+                console.warn("THREE.GTAOPass: Unknown output type.");
+        }
+    }
+    renderPass(renderer, passMaterial, renderTarget, clearColor, clearAlpha) {
+        // save original state
+        renderer.getClearColor(this.originalClearColor);
+        const originalClearAlpha = renderer.getClearAlpha();
+        const originalAutoClear = renderer.autoClear;
+        renderer.setRenderTarget(renderTarget);
+        // setup pass state
+        renderer.autoClear = false;
+        if (clearColor !== undefined && clearColor !== null) {
+            renderer.setClearColor(clearColor);
+            renderer.setClearAlpha(clearAlpha || 0.0);
+            renderer.clear();
+        }
+        this.fsQuad.material = passMaterial;
+        this.fsQuad.render(renderer);
+        // restore original state
+        renderer.autoClear = originalAutoClear;
+        renderer.setClearColor(this.originalClearColor);
+        renderer.setClearAlpha(originalClearAlpha);
+    }
+    renderOverride(renderer, overrideMaterial, renderTarget, clearColor, clearAlpha) {
+        renderer.getClearColor(this.originalClearColor);
+        const originalClearAlpha = renderer.getClearAlpha();
+        const originalAutoClear = renderer.autoClear;
+        renderer.setRenderTarget(renderTarget);
+        renderer.autoClear = false;
+        clearColor = overrideMaterial.clearColor || clearColor;
+        clearAlpha = overrideMaterial.clearAlpha || clearAlpha;
+        if (clearColor !== undefined && clearColor !== null) {
+            renderer.setClearColor(clearColor);
+            renderer.setClearAlpha(clearAlpha || 0.0);
+            renderer.clear();
+        }
+        this.scene.overrideMaterial = overrideMaterial;
+        renderer.render(this.scene, this.camera);
+        this.scene.overrideMaterial = null;
+        renderer.autoClear = originalAutoClear;
+        renderer.setClearColor(this.originalClearColor);
+        renderer.setClearAlpha(originalClearAlpha);
+    }
+    setSize(width, height) {
+        this.width = width;
+        this.height = height;
+        this.gtaoRenderTarget.setSize(width, height);
+        this.normalRenderTarget.setSize(width, height);
+        this.pdRenderTarget.setSize(width, height);
+        this.gtaoMaterial.uniforms.resolution.value.set(width, height);
+        this.gtaoMaterial.uniforms.cameraProjectionMatrix.value.copy(this.camera.projectionMatrix);
+        this.gtaoMaterial.uniforms.cameraProjectionMatrixInverse.value.copy(this.camera.projectionMatrixInverse);
+        this.pdMaterial.uniforms.resolution.value.set(width, height);
+        this.pdMaterial.uniforms.cameraProjectionMatrixInverse.value.copy(this.camera.projectionMatrixInverse);
+    }
+    overrideVisibility() {
+        const scene = this.scene;
+        const cache = this._visibilityCache;
+        scene.traverse(function(object) {
+            cache.set(object, object.visible);
+            if (object.isPoints || object.isLine) object.visible = false;
+        });
+    }
+    restoreVisibility() {
+        const scene = this.scene;
+        const cache = this._visibilityCache;
+        scene.traverse(function(object) {
+            const visible = cache.get(object);
+            object.visible = visible;
+        });
+        cache.clear();
+    }
+    generateNoise(size = 64) {
+        const simplex = new (0, _simplexNoiseJs.SimplexNoise)();
+        const arraySize = size * size * 4;
+        const data = new Uint8Array(arraySize);
+        for(let i = 0; i < size; i++)for(let j = 0; j < size; j++){
+            const x = i;
+            const y = j;
+            data[(i * size + j) * 4] = (simplex.noise(x, y) * 0.5 + 0.5) * 255;
+            data[(i * size + j) * 4 + 1] = (simplex.noise(x + size, y) * 0.5 + 0.5) * 255;
+            data[(i * size + j) * 4 + 2] = (simplex.noise(x, y + size) * 0.5 + 0.5) * 255;
+            data[(i * size + j) * 4 + 3] = (simplex.noise(x + size, y + size) * 0.5 + 0.5) * 255;
+        }
+        const noiseTexture = new (0, _three.DataTexture)(data, size, size, (0, _three.RGBAFormat), (0, _three.UnsignedByteType));
+        noiseTexture.wrapS = (0, _three.RepeatWrapping);
+        noiseTexture.wrapT = (0, _three.RepeatWrapping);
+        noiseTexture.needsUpdate = true;
+        return noiseTexture;
+    }
+}
+GTAOPass.OUTPUT = {
+    "Default": 0,
+    "Diffuse": 1,
+    "Depth": 2,
+    "Normal": 3,
+    "AO": 4,
+    "Denoise": 5
+};
+
+},{"three":"ktPTu","./Pass.js":"i2IfB","../shaders/GTAOShader.js":"2PXa9","../shaders/PoissonDenoiseShader.js":"3bjj0","../shaders/CopyShader.js":"d0PyX","../math/SimplexNoise.js":"4r7fB","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"2PXa9":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "generateMagicSquareNoise", ()=>generateMagicSquareNoise);
+parcelHelpers.export(exports, "GTAOShader", ()=>GTAOShader);
+parcelHelpers.export(exports, "GTAODepthShader", ()=>GTAODepthShader);
+parcelHelpers.export(exports, "GTAOBlendShader", ()=>GTAOBlendShader);
+var _three = require("three");
+/**
+ * References:
+ * - implemented algorithm - GTAO
+ *   - https://iryoku.com/downloads/Practical-Realtime-Strategies-for-Accurate-Indirect-Occlusion.pdf
+ *   - https://github.com/Patapom/GodComplex/blob/master/Tests/TestHBIL/2018%20Mayaux%20-%20Horizon-Based%20Indirect%20Lighting%20(HBIL).pdf
+ *
+ * - other AO algorithms that are not implemented here:
+ *   - Screen Space Ambient Occlusion (SSAO), see also SSAOShader.js
+ *	 - http://john-chapman-graphics.blogspot.com/2013/01/ssao-tutorial.html
+ *	 - https://learnopengl.com/Advanced-Lighting/SSAO
+ *	 - https://creativecoding.soe.ucsc.edu/courses/cmpm164/_schedule/AmbientOcclusion.pdf
+ *	 - https://drive.google.com/file/d/1SyagcEVplIm2KkRD3WQYSO9O0Iyi1hfy/edit
+ *   - Scalable Ambient Occlusion (SAO), see also SAOShader.js
+ *	 - https://casual-effects.com/research/McGuire2012SAO/index.html
+ *	   - https://research.nvidia.com/sites/default/files/pubs/2012-06_Scalable-Ambient-Obscurance/McGuire12SAO.pdf
+ *   - N8HO
+ *	 - https://github.com/N8python/n8ao
+ *   - Horizon Based Ambient Occlusion (HBAO)
+ *	 - http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.577.2286&rep=rep1&type=pdf
+ *	 - https://www.derschmale.com/2013/12/20/an-alternative-implementation-for-hbao-2/
+ *
+ * - further reading
+ * 	 - https://ceur-ws.org/Vol-3027/paper5.pdf
+ *   - https://www.comp.nus.edu.sg/~lowkl/publications/mssao_visual_computer_2012.pdf
+ *   - https://web.ics.purdue.edu/~tmcgraw/papers/mcgraw-ao-2008.pdf
+ *   - https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
+ *   - https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.390.2463&rep=rep1&type=pdf
+ *   - https://www.intel.com/content/www/us/en/developer/articles/technical/adaptive-screen-space-ambient-occlusion.html
+ */ const GTAOShader = {
+    name: "GTAOShader",
+    defines: {
+        PERSPECTIVE_CAMERA: 1,
+        SAMPLES: 16,
+        NORMAL_VECTOR_TYPE: 1,
+        DEPTH_SWIZZLING: "x",
+        SCREEN_SPACE_RADIUS: 0,
+        SCREEN_SPACE_RADIUS_SCALE: 100.0,
+        SCENE_CLIP_BOX: 0
+    },
+    uniforms: {
+        tNormal: {
+            value: null
+        },
+        tDepth: {
+            value: null
+        },
+        tNoise: {
+            value: null
+        },
+        resolution: {
+            value: new (0, _three.Vector2)()
+        },
+        cameraNear: {
+            value: null
+        },
+        cameraFar: {
+            value: null
+        },
+        cameraProjectionMatrix: {
+            value: new (0, _three.Matrix4)()
+        },
+        cameraProjectionMatrixInverse: {
+            value: new (0, _three.Matrix4)()
+        },
+        cameraWorldMatrix: {
+            value: new (0, _three.Matrix4)()
+        },
+        radius: {
+            value: 0.25
+        },
+        distanceExponent: {
+            value: 1.
+        },
+        thickness: {
+            value: 1.
+        },
+        distanceFallOff: {
+            value: 1.
+        },
+        scale: {
+            value: 1.
+        },
+        sceneBoxMin: {
+            value: new (0, _three.Vector3)(-1, -1, -1)
+        },
+        sceneBoxMax: {
+            value: new (0, _three.Vector3)(1, 1, 1)
+        }
+    },
+    vertexShader: /* glsl */ `
+
+		varying vec2 vUv;
+
+		void main() {
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+		}`,
+    fragmentShader: /* glsl */ `
+		varying vec2 vUv;
+		uniform highp sampler2D tNormal;
+		uniform highp sampler2D tDepth;
+		uniform sampler2D tNoise;
+		uniform vec2 resolution;
+		uniform float cameraNear;
+		uniform float cameraFar;
+		uniform mat4 cameraProjectionMatrix;
+		uniform mat4 cameraProjectionMatrixInverse;		
+		uniform mat4 cameraWorldMatrix;
+		uniform float radius;
+		uniform float distanceExponent;
+		uniform float thickness;
+		uniform float distanceFallOff;
+		uniform float scale;
+		#if SCENE_CLIP_BOX == 1
+			uniform vec3 sceneBoxMin;
+			uniform vec3 sceneBoxMax;
+		#endif
+		
+		#include <common>
+		#include <packing>
+
+		#ifndef FRAGMENT_OUTPUT
+		#define FRAGMENT_OUTPUT vec4(vec3(ao), 1.)
+		#endif
+
+		vec3 getViewPosition(const in vec2 screenPosition, const in float depth) {
+			vec4 clipSpacePosition = vec4(vec3(screenPosition, depth) * 2.0 - 1.0, 1.0);
+			vec4 viewSpacePosition = cameraProjectionMatrixInverse * clipSpacePosition;
+			return viewSpacePosition.xyz / viewSpacePosition.w;
+		}
+
+		float getDepth(const vec2 uv) {  
+			return textureLod(tDepth, uv.xy, 0.0).DEPTH_SWIZZLING;
+		}
+
+		float fetchDepth(const ivec2 uv) {   
+			return texelFetch(tDepth, uv.xy, 0).DEPTH_SWIZZLING;
+		}
+
+		float getViewZ(const in float depth) {
+			#if PERSPECTIVE_CAMERA == 1
+				return perspectiveDepthToViewZ(depth, cameraNear, cameraFar);
+			#else
+				return orthographicDepthToViewZ(depth, cameraNear, cameraFar);
+			#endif
+		}
+
+		vec3 computeNormalFromDepth(const vec2 uv) {
+			vec2 size = vec2(textureSize(tDepth, 0));
+			ivec2 p = ivec2(uv * size);
+			float c0 = fetchDepth(p);
+			float l2 = fetchDepth(p - ivec2(2, 0));
+			float l1 = fetchDepth(p - ivec2(1, 0));
+			float r1 = fetchDepth(p + ivec2(1, 0));
+			float r2 = fetchDepth(p + ivec2(2, 0));
+			float b2 = fetchDepth(p - ivec2(0, 2));
+			float b1 = fetchDepth(p - ivec2(0, 1));
+			float t1 = fetchDepth(p + ivec2(0, 1));
+			float t2 = fetchDepth(p + ivec2(0, 2));
+			float dl = abs((2.0 * l1 - l2) - c0);
+			float dr = abs((2.0 * r1 - r2) - c0);
+			float db = abs((2.0 * b1 - b2) - c0);
+			float dt = abs((2.0 * t1 - t2) - c0);
+			vec3 ce = getViewPosition(uv, c0).xyz;
+			vec3 dpdx = (dl < dr) ? ce - getViewPosition((uv - vec2(1.0 / size.x, 0.0)), l1).xyz : -ce + getViewPosition((uv + vec2(1.0 / size.x, 0.0)), r1).xyz;
+			vec3 dpdy = (db < dt) ? ce - getViewPosition((uv - vec2(0.0, 1.0 / size.y)), b1).xyz : -ce + getViewPosition((uv + vec2(0.0, 1.0 / size.y)), t1).xyz;
+			return normalize(cross(dpdx, dpdy));
+		}
+
+		vec3 getViewNormal(const vec2 uv) {
+			#if NORMAL_VECTOR_TYPE == 2
+				return normalize(textureLod(tNormal, uv, 0.).rgb);
+			#elif NORMAL_VECTOR_TYPE == 1
+				return unpackRGBToNormal(textureLod(tNormal, uv, 0.).rgb);
+			#else
+				return computeNormalFromDepth(uv);
+			#endif
+		}
+
+		vec3 getSceneUvAndDepth(vec3 sampleViewPos) {
+			vec4 sampleClipPos = cameraProjectionMatrix * vec4(sampleViewPos, 1.);
+			vec2 sampleUv = sampleClipPos.xy / sampleClipPos.w * 0.5 + 0.5;
+			float sampleSceneDepth = getDepth(sampleUv);
+			return vec3(sampleUv, sampleSceneDepth);
+		}
+		
+		void main() {
+			float depth = getDepth(vUv.xy);
+			if (depth >= 1.0) {
+				discard;
+				return;
+			}
+			vec3 viewPos = getViewPosition(vUv, depth);
+			vec3 viewNormal = getViewNormal(vUv);
+
+			float radiusToUse = radius;
+			float distanceFalloffToUse = thickness;
+			#if SCREEN_SPACE_RADIUS == 1
+				float radiusScale = getViewPosition(vec2(0.5 + float(SCREEN_SPACE_RADIUS_SCALE) / resolution.x, 0.0), depth).x;
+				radiusToUse *= radiusScale;
+				distanceFalloffToUse *= radiusScale;
+			#endif
+
+			#if SCENE_CLIP_BOX == 1
+				vec3 worldPos = (cameraWorldMatrix * vec4(viewPos, 1.0)).xyz;
+				float boxDistance = length(max(vec3(0.0), max(sceneBoxMin - worldPos, worldPos - sceneBoxMax)));
+				if (boxDistance > radiusToUse) {
+					discard;
+					return;
+				}
+			#endif
+			
+			vec2 noiseResolution = vec2(textureSize(tNoise, 0));
+			vec2 noiseUv = vUv * resolution / noiseResolution;
+			vec4 noiseTexel = textureLod(tNoise, noiseUv, 0.0);
+			vec3 randomVec = noiseTexel.xyz * 2.0 - 1.0;
+			vec3 tangent = normalize(vec3(randomVec.xy, 0.));
+			vec3 bitangent = vec3(-tangent.y, tangent.x, 0.);
+			mat3 kernelMatrix = mat3(tangent, bitangent, vec3(0., 0., 1.));
+
+			const int DIRECTIONS = SAMPLES < 30 ? 3 : 5;
+			const int STEPS = (SAMPLES + DIRECTIONS - 1) / DIRECTIONS;
+			float ao = 0.0, totalWeight = 0.0;
+			for (int i = 0; i < DIRECTIONS; ++i) {
+				
+				float angle = float(i) / float(DIRECTIONS) * PI;
+				vec4 sampleDir = vec4(cos(angle), sin(angle), 0., 0.5 + 0.5 * noiseTexel.w); 
+				sampleDir.xyz = normalize(kernelMatrix * sampleDir.xyz);
+
+				vec3 viewDir = normalize(-viewPos.xyz);
+				vec3 sliceBitangent = normalize(cross(sampleDir.xyz, viewDir));
+				vec3 sliceTangent = cross(sliceBitangent, viewDir);
+				vec3 normalInSlice = normalize(viewNormal - sliceBitangent * dot(viewNormal, sliceBitangent));
+				
+				vec3 tangentToNormalInSlice = cross(normalInSlice, sliceBitangent);
+				vec2 cosHorizons = vec2(dot(viewDir, tangentToNormalInSlice), dot(viewDir, -tangentToNormalInSlice));
+				
+				for (int j = 0; j < STEPS; ++j) {
+					vec3 sampleViewOffset = sampleDir.xyz * radiusToUse * sampleDir.w * pow(float(j + 1) / float(STEPS), distanceExponent);	
+
+					vec3 sampleSceneUvDepth = getSceneUvAndDepth(viewPos + sampleViewOffset);
+					vec3 sampleSceneViewPos = getViewPosition(sampleSceneUvDepth.xy, sampleSceneUvDepth.z);
+					vec3 viewDelta = sampleSceneViewPos - viewPos;
+					if (abs(viewDelta.z) < thickness) {
+						float sampleCosHorizon = dot(viewDir, normalize(viewDelta));
+						cosHorizons.x += max(0., (sampleCosHorizon - cosHorizons.x) * mix(1., 2. / float(j + 2), distanceFallOff));
+					}		
+
+					sampleSceneUvDepth = getSceneUvAndDepth(viewPos - sampleViewOffset);
+					sampleSceneViewPos = getViewPosition(sampleSceneUvDepth.xy, sampleSceneUvDepth.z);
+					viewDelta = sampleSceneViewPos - viewPos;
+					if (abs(viewDelta.z) < thickness) {
+						float sampleCosHorizon = dot(viewDir, normalize(viewDelta));
+						cosHorizons.y += max(0., (sampleCosHorizon - cosHorizons.y) * mix(1., 2. / float(j + 2), distanceFallOff));
+					}
+				}
+
+				vec2 sinHorizons = sqrt(1. - cosHorizons * cosHorizons);
+				float nx = dot(normalInSlice, sliceTangent);
+				float ny = dot(normalInSlice, viewDir);
+				float nxb = 1. / 2. * (acos(cosHorizons.y) - acos(cosHorizons.x) + sinHorizons.x * cosHorizons.x - sinHorizons.y * cosHorizons.y);
+				float nyb = 1. / 2. * (2. - cosHorizons.x * cosHorizons.x - cosHorizons.y * cosHorizons.y);
+				float occlusion = nx * nxb + ny * nyb;
+				ao += occlusion;
+			}
+
+			ao = clamp(ao / float(DIRECTIONS), 0., 1.);		
+		#if SCENE_CLIP_BOX == 1
+			ao = mix(ao, 1., smoothstep(0., radiusToUse, boxDistance));
+		#endif
+			ao = pow(ao, scale);
+
+			gl_FragColor = FRAGMENT_OUTPUT;
+		}`
+};
+const GTAODepthShader = {
+    name: "GTAODepthShader",
+    defines: {
+        PERSPECTIVE_CAMERA: 1
+    },
+    uniforms: {
+        tDepth: {
+            value: null
+        },
+        cameraNear: {
+            value: null
+        },
+        cameraFar: {
+            value: null
+        }
+    },
+    vertexShader: /* glsl */ `
+		varying vec2 vUv;
+
+		void main() {
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+		}`,
+    fragmentShader: /* glsl */ `
+		uniform sampler2D tDepth;
+		uniform float cameraNear;
+		uniform float cameraFar;
+		varying vec2 vUv;
+
+		#include <packing>
+
+		float getLinearDepth( const in vec2 screenPosition ) {
+			#if PERSPECTIVE_CAMERA == 1
+				float fragCoordZ = texture2D( tDepth, screenPosition ).x;
+				float viewZ = perspectiveDepthToViewZ( fragCoordZ, cameraNear, cameraFar );
+				return viewZToOrthographicDepth( viewZ, cameraNear, cameraFar );
+			#else
+				return texture2D( tDepth, screenPosition ).x;
+			#endif
+		}
+
+		void main() {
+			float depth = getLinearDepth( vUv );
+			gl_FragColor = vec4( vec3( 1.0 - depth ), 1.0 );
+
+		}`
+};
+const GTAOBlendShader = {
+    name: "GTAOBlendShader",
+    uniforms: {
+        tDiffuse: {
+            value: null
+        },
+        intensity: {
+            value: 1.0
+        }
+    },
+    vertexShader: /* glsl */ `
+		varying vec2 vUv;
+
+		void main() {
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+		}`,
+    fragmentShader: /* glsl */ `
+		uniform float intensity;
+		uniform sampler2D tDiffuse;
+		varying vec2 vUv;
+
+		void main() {
+			vec4 texel = texture2D( tDiffuse, vUv );
+			gl_FragColor = vec4(mix(vec3(1.), texel.rgb, intensity), texel.a);
+		}`
+};
+function generateMagicSquareNoise(size = 5) {
+    const noiseSize = Math.floor(size) % 2 === 0 ? Math.floor(size) + 1 : Math.floor(size);
+    const magicSquare = generateMagicSquare(noiseSize);
+    const noiseSquareSize = magicSquare.length;
+    const data = new Uint8Array(noiseSquareSize * 4);
+    for(let inx = 0; inx < noiseSquareSize; ++inx){
+        const iAng = magicSquare[inx];
+        const angle = 2 * Math.PI * iAng / noiseSquareSize;
+        const randomVec = new (0, _three.Vector3)(Math.cos(angle), Math.sin(angle), 0).normalize();
+        data[inx * 4] = (randomVec.x * 0.5 + 0.5) * 255;
+        data[inx * 4 + 1] = (randomVec.y * 0.5 + 0.5) * 255;
+        data[inx * 4 + 2] = 127;
+        data[inx * 4 + 3] = 255;
+    }
+    const noiseTexture = new (0, _three.DataTexture)(data, noiseSize, noiseSize);
+    noiseTexture.wrapS = (0, _three.RepeatWrapping);
+    noiseTexture.wrapT = (0, _three.RepeatWrapping);
+    noiseTexture.needsUpdate = true;
+    return noiseTexture;
+}
+function generateMagicSquare(size) {
+    const noiseSize = Math.floor(size) % 2 === 0 ? Math.floor(size) + 1 : Math.floor(size);
+    const noiseSquareSize = noiseSize * noiseSize;
+    const magicSquare = Array(noiseSquareSize).fill(0);
+    let i = Math.floor(noiseSize / 2);
+    let j = noiseSize - 1;
+    for(let num = 1; num <= noiseSquareSize;){
+        if (i === -1 && j === noiseSize) {
+            j = noiseSize - 2;
+            i = 0;
+        } else {
+            if (j === noiseSize) j = 0;
+            if (i < 0) i = noiseSize - 1;
+        }
+        if (magicSquare[i * noiseSize + j] !== 0) {
+            j -= 2;
+            i++;
+            continue;
+        } else magicSquare[i * noiseSize + j] = num++;
+        j++;
+        i--;
+    }
+    return magicSquare;
+}
+
+},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"3bjj0":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "generatePdSamplePointInitializer", ()=>generatePdSamplePointInitializer);
+parcelHelpers.export(exports, "PoissonDenoiseShader", ()=>PoissonDenoiseShader);
+var _three = require("three");
+/**
+ * References:
+ * https://openaccess.thecvf.com/content/WACV2021/papers/Khademi_Self-Supervised_Poisson-Gaussian_Denoising_WACV_2021_paper.pdf
+ * https://arxiv.org/pdf/2206.01856.pdf
+ */ const PoissonDenoiseShader = {
+    name: "PoissonDenoiseShader",
+    defines: {
+        "SAMPLES": 16,
+        "SAMPLE_VECTORS": generatePdSamplePointInitializer(16, 2, 1),
+        "NORMAL_VECTOR_TYPE": 1,
+        "DEPTH_VALUE_SOURCE": 0
+    },
+    uniforms: {
+        "tDiffuse": {
+            value: null
+        },
+        "tNormal": {
+            value: null
+        },
+        "tDepth": {
+            value: null
+        },
+        "tNoise": {
+            value: null
+        },
+        "resolution": {
+            value: new (0, _three.Vector2)()
+        },
+        "cameraProjectionMatrixInverse": {
+            value: new (0, _three.Matrix4)()
+        },
+        "lumaPhi": {
+            value: 5.
+        },
+        "depthPhi": {
+            value: 5.
+        },
+        "normalPhi": {
+            value: 5.
+        },
+        "radius": {
+            value: 4.
+        },
+        "index": {
+            value: 0
+        }
+    },
+    vertexShader: /* glsl */ `
+
+		varying vec2 vUv;
+
+		void main() {
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+		}`,
+    fragmentShader: /* glsl */ `
+
+		varying vec2 vUv;
+
+		uniform sampler2D tDiffuse;
+		uniform sampler2D tNormal;
+		uniform sampler2D tDepth;
+		uniform sampler2D tNoise;
+		uniform vec2 resolution;
+		uniform mat4 cameraProjectionMatrixInverse;
+		uniform float lumaPhi;
+		uniform float depthPhi;
+		uniform float normalPhi;
+		uniform float radius;
+		uniform int index;
+		
+		#include <common>
+		#include <packing>
+
+		#ifndef SAMPLE_LUMINANCE
+		#define SAMPLE_LUMINANCE dot(vec3(0.2125, 0.7154, 0.0721), a)
+		#endif
+
+		#ifndef FRAGMENT_OUTPUT
+		#define FRAGMENT_OUTPUT vec4(denoised, 1.)
+		#endif
+
+		float getLuminance(const in vec3 a) {
+			return SAMPLE_LUMINANCE;
+		}
+
+		const vec3 poissonDisk[SAMPLES] = SAMPLE_VECTORS;
+
+		vec3 getViewPosition(const in vec2 screenPosition, const in float depth) {
+			vec4 clipSpacePosition = vec4(vec3(screenPosition, depth) * 2.0 - 1.0, 1.0);
+			vec4 viewSpacePosition = cameraProjectionMatrixInverse * clipSpacePosition;
+			return viewSpacePosition.xyz / viewSpacePosition.w;
+		}
+		
+		float getDepth(const vec2 uv) {
+		#if DEPTH_VALUE_SOURCE == 1    
+			return textureLod(tDepth, uv.xy, 0.0).a;
+		#else
+			return textureLod(tDepth, uv.xy, 0.0).r;
+		#endif
+		}
+
+		float fetchDepth(const ivec2 uv) {
+			#if DEPTH_VALUE_SOURCE == 1    
+				return texelFetch(tDepth, uv.xy, 0).a;
+			#else
+				return texelFetch(tDepth, uv.xy, 0).r;
+			#endif
+		}
+
+		vec3 computeNormalFromDepth(const vec2 uv) {
+			vec2 size = vec2(textureSize(tDepth, 0));
+			ivec2 p = ivec2(uv * size);
+			float c0 = fetchDepth(p);
+			float l2 = fetchDepth(p - ivec2(2, 0));
+			float l1 = fetchDepth(p - ivec2(1, 0));
+			float r1 = fetchDepth(p + ivec2(1, 0));
+			float r2 = fetchDepth(p + ivec2(2, 0));
+			float b2 = fetchDepth(p - ivec2(0, 2));
+			float b1 = fetchDepth(p - ivec2(0, 1));
+			float t1 = fetchDepth(p + ivec2(0, 1));
+			float t2 = fetchDepth(p + ivec2(0, 2));
+			float dl = abs((2.0 * l1 - l2) - c0);
+			float dr = abs((2.0 * r1 - r2) - c0);
+			float db = abs((2.0 * b1 - b2) - c0);
+			float dt = abs((2.0 * t1 - t2) - c0);
+			vec3 ce = getViewPosition(uv, c0).xyz;
+			vec3 dpdx = (dl < dr) ?  ce - getViewPosition((uv - vec2(1.0 / size.x, 0.0)), l1).xyz
+									: -ce + getViewPosition((uv + vec2(1.0 / size.x, 0.0)), r1).xyz;
+			vec3 dpdy = (db < dt) ?  ce - getViewPosition((uv - vec2(0.0, 1.0 / size.y)), b1).xyz
+									: -ce + getViewPosition((uv + vec2(0.0, 1.0 / size.y)), t1).xyz;
+			return normalize(cross(dpdx, dpdy));
+		}
+
+		vec3 getViewNormal(const vec2 uv) {
+		#if NORMAL_VECTOR_TYPE == 2
+			return normalize(textureLod(tNormal, uv, 0.).rgb);
+		#elif NORMAL_VECTOR_TYPE == 1
+			return unpackRGBToNormal(textureLod(tNormal, uv, 0.).rgb);
+		#else
+			return computeNormalFromDepth(uv);
+		#endif
+		}
+
+		void denoiseSample(in vec3 center, in vec3 viewNormal, in vec3 viewPos, in vec2 sampleUv, inout vec3 denoised, inout float totalWeight) {
+			vec4 sampleTexel = textureLod(tDiffuse, sampleUv, 0.0);
+			float sampleDepth = getDepth(sampleUv);
+			vec3 sampleNormal = getViewNormal(sampleUv);
+			vec3 neighborColor = sampleTexel.rgb;
+			vec3 viewPosSample = getViewPosition(sampleUv, sampleDepth);
+			
+			float normalDiff = dot(viewNormal, sampleNormal);
+			float normalSimilarity = pow(max(normalDiff, 0.), normalPhi);
+			float lumaDiff = abs(getLuminance(neighborColor) - getLuminance(center));
+			float lumaSimilarity = max(1.0 - lumaDiff / lumaPhi, 0.0);
+			float depthDiff = abs(dot(viewPos - viewPosSample, viewNormal));
+			float depthSimilarity = max(1. - depthDiff / depthPhi, 0.);
+			float w = lumaSimilarity * depthSimilarity * normalSimilarity;
+		
+			denoised += w * neighborColor;
+			totalWeight += w;
+		}
+		
+		void main() {
+			float depth = getDepth(vUv.xy);	
+			vec3 viewNormal = getViewNormal(vUv);	
+			if (depth == 1. || dot(viewNormal, viewNormal) == 0.) {
+				discard;
+				return;
+			}
+			vec4 texel = textureLod(tDiffuse, vUv, 0.0);
+			vec3 center = texel.rgb;
+			vec3 viewPos = getViewPosition(vUv, depth);
+
+			vec2 noiseResolution = vec2(textureSize(tNoise, 0));
+			vec2 noiseUv = vUv * resolution / noiseResolution;
+			vec4 noiseTexel = textureLod(tNoise, noiseUv, 0.0);
+      		vec2 noiseVec = vec2(sin(noiseTexel[index % 4] * 2. * PI), cos(noiseTexel[index % 4] * 2. * PI));
+    		mat2 rotationMatrix = mat2(noiseVec.x, -noiseVec.y, noiseVec.x, noiseVec.y);
+		
+			float totalWeight = 1.0;
+			vec3 denoised = texel.rgb;
+			for (int i = 0; i < SAMPLES; i++) {
+				vec3 sampleDir = poissonDisk[i];
+				vec2 offset = rotationMatrix * (sampleDir.xy * (1. + sampleDir.z * (radius - 1.)) / resolution);
+				vec2 sampleUv = vUv + offset;
+				denoiseSample(center, viewNormal, viewPos, sampleUv, denoised, totalWeight);
+			}
+		
+			if (totalWeight > 0.) { 
+				denoised /= totalWeight;
+			}
+			gl_FragColor = FRAGMENT_OUTPUT;
+		}`
+};
+function generatePdSamplePointInitializer(samples, rings, radiusExponent) {
+    const poissonDisk = generateDenoiseSamples(samples, rings, radiusExponent);
+    let glslCode = "vec3[SAMPLES](";
+    for(let i = 0; i < samples; i++){
+        const sample = poissonDisk[i];
+        glslCode += `vec3(${sample.x}, ${sample.y}, ${sample.z})${i < samples - 1 ? "," : ")"}`;
+    }
+    return glslCode;
+}
+function generateDenoiseSamples(numSamples, numRings, radiusExponent) {
+    const samples = [];
+    for(let i = 0; i < numSamples; i++){
+        const angle = 2 * Math.PI * numRings * i / numSamples;
+        const radius = Math.pow(i / (numSamples - 1), radiusExponent);
+        samples.push(new (0, _three.Vector3)(Math.cos(angle), Math.sin(angle), radius));
+    }
+    return samples;
+}
+
+},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"4r7fB":[function(require,module,exports) {
+// Ported from Stefan Gustavson's java implementation
+// http://staffwww.itn.liu.se/~stegu/simplexnoise/simplexnoise.pdf
+// Read Stefan's excellent paper for details on how this code works.
+//
+// Sean McCullough banksean@gmail.com
+//
+// Added 4D noise
+/**
+ * You can pass in a random number generator object if you like.
+ * It is assumed to have a random() method.
+ */ var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "SimplexNoise", ()=>SimplexNoise);
+class SimplexNoise {
+    constructor(r = Math){
+        this.grad3 = [
+            [
+                1,
+                1,
+                0
+            ],
+            [
+                -1,
+                1,
+                0
+            ],
+            [
+                1,
+                -1,
+                0
+            ],
+            [
+                -1,
+                -1,
+                0
+            ],
+            [
+                1,
+                0,
+                1
+            ],
+            [
+                -1,
+                0,
+                1
+            ],
+            [
+                1,
+                0,
+                -1
+            ],
+            [
+                -1,
+                0,
+                -1
+            ],
+            [
+                0,
+                1,
+                1
+            ],
+            [
+                0,
+                -1,
+                1
+            ],
+            [
+                0,
+                1,
+                -1
+            ],
+            [
+                0,
+                -1,
+                -1
+            ]
+        ];
+        this.grad4 = [
+            [
+                0,
+                1,
+                1,
+                1
+            ],
+            [
+                0,
+                1,
+                1,
+                -1
+            ],
+            [
+                0,
+                1,
+                -1,
+                1
+            ],
+            [
+                0,
+                1,
+                -1,
+                -1
+            ],
+            [
+                0,
+                -1,
+                1,
+                1
+            ],
+            [
+                0,
+                -1,
+                1,
+                -1
+            ],
+            [
+                0,
+                -1,
+                -1,
+                1
+            ],
+            [
+                0,
+                -1,
+                -1,
+                -1
+            ],
+            [
+                1,
+                0,
+                1,
+                1
+            ],
+            [
+                1,
+                0,
+                1,
+                -1
+            ],
+            [
+                1,
+                0,
+                -1,
+                1
+            ],
+            [
+                1,
+                0,
+                -1,
+                -1
+            ],
+            [
+                -1,
+                0,
+                1,
+                1
+            ],
+            [
+                -1,
+                0,
+                1,
+                -1
+            ],
+            [
+                -1,
+                0,
+                -1,
+                1
+            ],
+            [
+                -1,
+                0,
+                -1,
+                -1
+            ],
+            [
+                1,
+                1,
+                0,
+                1
+            ],
+            [
+                1,
+                1,
+                0,
+                -1
+            ],
+            [
+                1,
+                -1,
+                0,
+                1
+            ],
+            [
+                1,
+                -1,
+                0,
+                -1
+            ],
+            [
+                -1,
+                1,
+                0,
+                1
+            ],
+            [
+                -1,
+                1,
+                0,
+                -1
+            ],
+            [
+                -1,
+                -1,
+                0,
+                1
+            ],
+            [
+                -1,
+                -1,
+                0,
+                -1
+            ],
+            [
+                1,
+                1,
+                1,
+                0
+            ],
+            [
+                1,
+                1,
+                -1,
+                0
+            ],
+            [
+                1,
+                -1,
+                1,
+                0
+            ],
+            [
+                1,
+                -1,
+                -1,
+                0
+            ],
+            [
+                -1,
+                1,
+                1,
+                0
+            ],
+            [
+                -1,
+                1,
+                -1,
+                0
+            ],
+            [
+                -1,
+                -1,
+                1,
+                0
+            ],
+            [
+                -1,
+                -1,
+                -1,
+                0
+            ]
+        ];
+        this.p = [];
+        for(let i = 0; i < 256; i++)this.p[i] = Math.floor(r.random() * 256);
+        // To remove the need for index wrapping, double the permutation table length
+        this.perm = [];
+        for(let i = 0; i < 512; i++)this.perm[i] = this.p[i & 255];
+        // A lookup table to traverse the simplex around a given point in 4D.
+        // Details can be found where this table is used, in the 4D noise method.
+        this.simplex = [
+            [
+                0,
+                1,
+                2,
+                3
+            ],
+            [
+                0,
+                1,
+                3,
+                2
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                2,
+                3,
+                1
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                2,
+                3,
+                0
+            ],
+            [
+                0,
+                2,
+                1,
+                3
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                3,
+                1,
+                2
+            ],
+            [
+                0,
+                3,
+                2,
+                1
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                3,
+                2,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                2,
+                0,
+                3
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                3,
+                0,
+                2
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                2,
+                3,
+                0,
+                1
+            ],
+            [
+                2,
+                3,
+                1,
+                0
+            ],
+            [
+                1,
+                0,
+                2,
+                3
+            ],
+            [
+                1,
+                0,
+                3,
+                2
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                2,
+                0,
+                3,
+                1
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                2,
+                1,
+                3,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                2,
+                0,
+                1,
+                3
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                3,
+                0,
+                1,
+                2
+            ],
+            [
+                3,
+                0,
+                2,
+                1
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                3,
+                1,
+                2,
+                0
+            ],
+            [
+                2,
+                1,
+                0,
+                3
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                3,
+                1,
+                0,
+                2
+            ],
+            [
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                3,
+                2,
+                0,
+                1
+            ],
+            [
+                3,
+                2,
+                1,
+                0
+            ]
+        ];
+    }
+    dot(g, x, y) {
+        return g[0] * x + g[1] * y;
+    }
+    dot3(g, x, y, z) {
+        return g[0] * x + g[1] * y + g[2] * z;
+    }
+    dot4(g, x, y, z, w) {
+        return g[0] * x + g[1] * y + g[2] * z + g[3] * w;
+    }
+    noise(xin, yin) {
+        let n0; // Noise contributions from the three corners
+        let n1;
+        let n2;
+        // Skew the input space to determine which simplex cell we're in
+        const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+        const s = (xin + yin) * F2; // Hairy factor for 2D
+        const i = Math.floor(xin + s);
+        const j = Math.floor(yin + s);
+        const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+        const t = (i + j) * G2;
+        const X0 = i - t; // Unskew the cell origin back to (x,y) space
+        const Y0 = j - t;
+        const x0 = xin - X0; // The x,y distances from the cell origin
+        const y0 = yin - Y0;
+        // For the 2D case, the simplex shape is an equilateral triangle.
+        // Determine which simplex we are in.
+        let i1; // Offsets for second (middle) corner of simplex in (i,j) coords
+        let j1;
+        if (x0 > y0) {
+            i1 = 1;
+            j1 = 0;
+        // lower triangle, XY order: (0,0)->(1,0)->(1,1)
+        } else {
+            i1 = 0;
+            j1 = 1;
+        } // upper triangle, YX order: (0,0)->(0,1)->(1,1)
+        // A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
+        // a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
+        // c = (3-sqrt(3))/6
+        const x1 = x0 - i1 + G2; // Offsets for middle corner in (x,y) unskewed coords
+        const y1 = y0 - j1 + G2;
+        const x2 = x0 - 1.0 + 2.0 * G2; // Offsets for last corner in (x,y) unskewed coords
+        const y2 = y0 - 1.0 + 2.0 * G2;
+        // Work out the hashed gradient indices of the three simplex corners
+        const ii = i & 255;
+        const jj = j & 255;
+        const gi0 = this.perm[ii + this.perm[jj]] % 12;
+        const gi1 = this.perm[ii + i1 + this.perm[jj + j1]] % 12;
+        const gi2 = this.perm[ii + 1 + this.perm[jj + 1]] % 12;
+        // Calculate the contribution from the three corners
+        let t0 = 0.5 - x0 * x0 - y0 * y0;
+        if (t0 < 0) n0 = 0.0;
+        else {
+            t0 *= t0;
+            n0 = t0 * t0 * this.dot(this.grad3[gi0], x0, y0); // (x,y) of grad3 used for 2D gradient
+        }
+        let t1 = 0.5 - x1 * x1 - y1 * y1;
+        if (t1 < 0) n1 = 0.0;
+        else {
+            t1 *= t1;
+            n1 = t1 * t1 * this.dot(this.grad3[gi1], x1, y1);
+        }
+        let t2 = 0.5 - x2 * x2 - y2 * y2;
+        if (t2 < 0) n2 = 0.0;
+        else {
+            t2 *= t2;
+            n2 = t2 * t2 * this.dot(this.grad3[gi2], x2, y2);
+        }
+        // Add contributions from each corner to get the final noise value.
+        // The result is scaled to return values in the interval [-1,1].
+        return 70.0 * (n0 + n1 + n2);
+    }
+    // 3D simplex noise
+    noise3d(xin, yin, zin) {
+        let n0; // Noise contributions from the four corners
+        let n1;
+        let n2;
+        let n3;
+        // Skew the input space to determine which simplex cell we're in
+        const F3 = 1.0 / 3.0;
+        const s = (xin + yin + zin) * F3; // Very nice and simple skew factor for 3D
+        const i = Math.floor(xin + s);
+        const j = Math.floor(yin + s);
+        const k = Math.floor(zin + s);
+        const G3 = 1.0 / 6.0; // Very nice and simple unskew factor, too
+        const t = (i + j + k) * G3;
+        const X0 = i - t; // Unskew the cell origin back to (x,y,z) space
+        const Y0 = j - t;
+        const Z0 = k - t;
+        const x0 = xin - X0; // The x,y,z distances from the cell origin
+        const y0 = yin - Y0;
+        const z0 = zin - Z0;
+        // For the 3D case, the simplex shape is a slightly irregular tetrahedron.
+        // Determine which simplex we are in.
+        let i1; // Offsets for second corner of simplex in (i,j,k) coords
+        let j1;
+        let k1;
+        let i2; // Offsets for third corner of simplex in (i,j,k) coords
+        let j2;
+        let k2;
+        if (x0 >= y0) {
+            if (y0 >= z0) {
+                i1 = 1;
+                j1 = 0;
+                k1 = 0;
+                i2 = 1;
+                j2 = 1;
+                k2 = 0;
+            // X Y Z order
+            } else if (x0 >= z0) {
+                i1 = 1;
+                j1 = 0;
+                k1 = 0;
+                i2 = 1;
+                j2 = 0;
+                k2 = 1;
+            // X Z Y order
+            } else {
+                i1 = 0;
+                j1 = 0;
+                k1 = 1;
+                i2 = 1;
+                j2 = 0;
+                k2 = 1;
+            } // Z X Y order
+        } else {
+            if (y0 < z0) {
+                i1 = 0;
+                j1 = 0;
+                k1 = 1;
+                i2 = 0;
+                j2 = 1;
+                k2 = 1;
+            // Z Y X order
+            } else if (x0 < z0) {
+                i1 = 0;
+                j1 = 1;
+                k1 = 0;
+                i2 = 0;
+                j2 = 1;
+                k2 = 1;
+            // Y Z X order
+            } else {
+                i1 = 0;
+                j1 = 1;
+                k1 = 0;
+                i2 = 1;
+                j2 = 1;
+                k2 = 0;
+            } // Y X Z order
+        }
+        // A step of (1,0,0) in (i,j,k) means a step of (1-c,-c,-c) in (x,y,z),
+        // a step of (0,1,0) in (i,j,k) means a step of (-c,1-c,-c) in (x,y,z), and
+        // a step of (0,0,1) in (i,j,k) means a step of (-c,-c,1-c) in (x,y,z), where
+        // c = 1/6.
+        const x1 = x0 - i1 + G3; // Offsets for second corner in (x,y,z) coords
+        const y1 = y0 - j1 + G3;
+        const z1 = z0 - k1 + G3;
+        const x2 = x0 - i2 + 2.0 * G3; // Offsets for third corner in (x,y,z) coords
+        const y2 = y0 - j2 + 2.0 * G3;
+        const z2 = z0 - k2 + 2.0 * G3;
+        const x3 = x0 - 1.0 + 3.0 * G3; // Offsets for last corner in (x,y,z) coords
+        const y3 = y0 - 1.0 + 3.0 * G3;
+        const z3 = z0 - 1.0 + 3.0 * G3;
+        // Work out the hashed gradient indices of the four simplex corners
+        const ii = i & 255;
+        const jj = j & 255;
+        const kk = k & 255;
+        const gi0 = this.perm[ii + this.perm[jj + this.perm[kk]]] % 12;
+        const gi1 = this.perm[ii + i1 + this.perm[jj + j1 + this.perm[kk + k1]]] % 12;
+        const gi2 = this.perm[ii + i2 + this.perm[jj + j2 + this.perm[kk + k2]]] % 12;
+        const gi3 = this.perm[ii + 1 + this.perm[jj + 1 + this.perm[kk + 1]]] % 12;
+        // Calculate the contribution from the four corners
+        let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0;
+        if (t0 < 0) n0 = 0.0;
+        else {
+            t0 *= t0;
+            n0 = t0 * t0 * this.dot3(this.grad3[gi0], x0, y0, z0);
+        }
+        let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1;
+        if (t1 < 0) n1 = 0.0;
+        else {
+            t1 *= t1;
+            n1 = t1 * t1 * this.dot3(this.grad3[gi1], x1, y1, z1);
+        }
+        let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2;
+        if (t2 < 0) n2 = 0.0;
+        else {
+            t2 *= t2;
+            n2 = t2 * t2 * this.dot3(this.grad3[gi2], x2, y2, z2);
+        }
+        let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3;
+        if (t3 < 0) n3 = 0.0;
+        else {
+            t3 *= t3;
+            n3 = t3 * t3 * this.dot3(this.grad3[gi3], x3, y3, z3);
+        }
+        // Add contributions from each corner to get the final noise value.
+        // The result is scaled to stay just inside [-1,1]
+        return 32.0 * (n0 + n1 + n2 + n3);
+    }
+    // 4D simplex noise
+    noise4d(x, y, z, w) {
+        // For faster and easier lookups
+        const grad4 = this.grad4;
+        const simplex = this.simplex;
+        const perm = this.perm;
+        // The skewing and unskewing factors are hairy again for the 4D case
+        const F4 = (Math.sqrt(5.0) - 1.0) / 4.0;
+        const G4 = (5.0 - Math.sqrt(5.0)) / 20.0;
+        let n0; // Noise contributions from the five corners
+        let n1;
+        let n2;
+        let n3;
+        let n4;
+        // Skew the (x,y,z,w) space to determine which cell of 24 simplices we're in
+        const s = (x + y + z + w) * F4; // Factor for 4D skewing
+        const i = Math.floor(x + s);
+        const j = Math.floor(y + s);
+        const k = Math.floor(z + s);
+        const l = Math.floor(w + s);
+        const t = (i + j + k + l) * G4; // Factor for 4D unskewing
+        const X0 = i - t; // Unskew the cell origin back to (x,y,z,w) space
+        const Y0 = j - t;
+        const Z0 = k - t;
+        const W0 = l - t;
+        const x0 = x - X0; // The x,y,z,w distances from the cell origin
+        const y0 = y - Y0;
+        const z0 = z - Z0;
+        const w0 = w - W0;
+        // For the 4D case, the simplex is a 4D shape I won't even try to describe.
+        // To find out which of the 24 possible simplices we're in, we need to
+        // determine the magnitude ordering of x0, y0, z0 and w0.
+        // The method below is a good way of finding the ordering of x,y,z,w and
+        // then find the correct traversal order for the simplex we’re in.
+        // First, six pair-wise comparisons are performed between each possible pair
+        // of the four coordinates, and the results are used to add up binary bits
+        // for an integer index.
+        const c1 = x0 > y0 ? 32 : 0;
+        const c2 = x0 > z0 ? 16 : 0;
+        const c3 = y0 > z0 ? 8 : 0;
+        const c4 = x0 > w0 ? 4 : 0;
+        const c5 = y0 > w0 ? 2 : 0;
+        const c6 = z0 > w0 ? 1 : 0;
+        const c = c1 + c2 + c3 + c4 + c5 + c6;
+        // simplex[c] is a 4-vector with the numbers 0, 1, 2 and 3 in some order.
+        // Many values of c will never occur, since e.g. x>y>z>w makes x<z, y<w and x<w
+        // impossible. Only the 24 indices which have non-zero entries make any sense.
+        // We use a thresholding to set the coordinates in turn from the largest magnitude.
+        // The number 3 in the "simplex" array is at the position of the largest coordinate.
+        const i1 = simplex[c][0] >= 3 ? 1 : 0;
+        const j1 = simplex[c][1] >= 3 ? 1 : 0;
+        const k1 = simplex[c][2] >= 3 ? 1 : 0;
+        const l1 = simplex[c][3] >= 3 ? 1 : 0;
+        // The number 2 in the "simplex" array is at the second largest coordinate.
+        const i2 = simplex[c][0] >= 2 ? 1 : 0;
+        const j2 = simplex[c][1] >= 2 ? 1 : 0;
+        const k2 = simplex[c][2] >= 2 ? 1 : 0;
+        const l2 = simplex[c][3] >= 2 ? 1 : 0;
+        // The number 1 in the "simplex" array is at the second smallest coordinate.
+        const i3 = simplex[c][0] >= 1 ? 1 : 0;
+        const j3 = simplex[c][1] >= 1 ? 1 : 0;
+        const k3 = simplex[c][2] >= 1 ? 1 : 0;
+        const l3 = simplex[c][3] >= 1 ? 1 : 0;
+        // The fifth corner has all coordinate offsets = 1, so no need to look that up.
+        const x1 = x0 - i1 + G4; // Offsets for second corner in (x,y,z,w) coords
+        const y1 = y0 - j1 + G4;
+        const z1 = z0 - k1 + G4;
+        const w1 = w0 - l1 + G4;
+        const x2 = x0 - i2 + 2.0 * G4; // Offsets for third corner in (x,y,z,w) coords
+        const y2 = y0 - j2 + 2.0 * G4;
+        const z2 = z0 - k2 + 2.0 * G4;
+        const w2 = w0 - l2 + 2.0 * G4;
+        const x3 = x0 - i3 + 3.0 * G4; // Offsets for fourth corner in (x,y,z,w) coords
+        const y3 = y0 - j3 + 3.0 * G4;
+        const z3 = z0 - k3 + 3.0 * G4;
+        const w3 = w0 - l3 + 3.0 * G4;
+        const x4 = x0 - 1.0 + 4.0 * G4; // Offsets for last corner in (x,y,z,w) coords
+        const y4 = y0 - 1.0 + 4.0 * G4;
+        const z4 = z0 - 1.0 + 4.0 * G4;
+        const w4 = w0 - 1.0 + 4.0 * G4;
+        // Work out the hashed gradient indices of the five simplex corners
+        const ii = i & 255;
+        const jj = j & 255;
+        const kk = k & 255;
+        const ll = l & 255;
+        const gi0 = perm[ii + perm[jj + perm[kk + perm[ll]]]] % 32;
+        const gi1 = perm[ii + i1 + perm[jj + j1 + perm[kk + k1 + perm[ll + l1]]]] % 32;
+        const gi2 = perm[ii + i2 + perm[jj + j2 + perm[kk + k2 + perm[ll + l2]]]] % 32;
+        const gi3 = perm[ii + i3 + perm[jj + j3 + perm[kk + k3 + perm[ll + l3]]]] % 32;
+        const gi4 = perm[ii + 1 + perm[jj + 1 + perm[kk + 1 + perm[ll + 1]]]] % 32;
+        // Calculate the contribution from the five corners
+        let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0 - w0 * w0;
+        if (t0 < 0) n0 = 0.0;
+        else {
+            t0 *= t0;
+            n0 = t0 * t0 * this.dot4(grad4[gi0], x0, y0, z0, w0);
+        }
+        let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1 - w1 * w1;
+        if (t1 < 0) n1 = 0.0;
+        else {
+            t1 *= t1;
+            n1 = t1 * t1 * this.dot4(grad4[gi1], x1, y1, z1, w1);
+        }
+        let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2 - w2 * w2;
+        if (t2 < 0) n2 = 0.0;
+        else {
+            t2 *= t2;
+            n2 = t2 * t2 * this.dot4(grad4[gi2], x2, y2, z2, w2);
+        }
+        let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3 - w3 * w3;
+        if (t3 < 0) n3 = 0.0;
+        else {
+            t3 *= t3;
+            n3 = t3 * t3 * this.dot4(grad4[gi3], x3, y3, z3, w3);
+        }
+        let t4 = 0.6 - x4 * x4 - y4 * y4 - z4 * z4 - w4 * w4;
+        if (t4 < 0) n4 = 0.0;
+        else {
+            t4 *= t4;
+            n4 = t4 * t4 * this.dot4(grad4[gi4], x4, y4, z4, w4);
+        }
+        // Sum up and scale the result to cover the range [-1,1]
+        return 27.0 * (n0 + n1 + n2 + n3 + n4);
+    }
+}
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"dWhzi":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "CSS3DObject", ()=>CSS3DObject);
+parcelHelpers.export(exports, "CSS3DSprite", ()=>CSS3DSprite);
+parcelHelpers.export(exports, "CSS3DRenderer", ()=>CSS3DRenderer);
+var _three = require("three");
+/**
+ * Based on http://www.emagix.net/academic/mscs-project/item/camera-sync-with-css3-and-webgl-threejs
+ */ const _position = new (0, _three.Vector3)();
+const _quaternion = new (0, _three.Quaternion)();
+const _scale = new (0, _three.Vector3)();
+class CSS3DObject extends (0, _three.Object3D) {
+    constructor(element = document.createElement("div")){
+        super();
+        this.isCSS3DObject = true;
+        this.element = element;
+        this.element.style.position = "absolute";
+        this.element.style.pointerEvents = "auto";
+        this.element.style.userSelect = "none";
+        this.element.setAttribute("draggable", false);
+        this.addEventListener("removed", function() {
+            this.traverse(function(object) {
+                if (object.element instanceof Element && object.element.parentNode !== null) object.element.parentNode.removeChild(object.element);
+            });
+        });
+    }
+    copy(source, recursive) {
+        super.copy(source, recursive);
+        this.element = source.element.cloneNode(true);
+        return this;
+    }
+}
+class CSS3DSprite extends CSS3DObject {
+    constructor(element){
+        super(element);
+        this.isCSS3DSprite = true;
+        this.rotation2D = 0;
+    }
+    copy(source, recursive) {
+        super.copy(source, recursive);
+        this.rotation2D = source.rotation2D;
+        return this;
+    }
+}
+//
+const _matrix = new (0, _three.Matrix4)();
+const _matrix2 = new (0, _three.Matrix4)();
+class CSS3DRenderer {
+    constructor(parameters = {}){
+        const _this = this;
+        let _width, _height;
+        let _widthHalf, _heightHalf;
+        const cache = {
+            camera: {
+                style: ""
+            },
+            objects: new WeakMap()
+        };
+        const domElement = parameters.element !== undefined ? parameters.element : document.createElement("div");
+        domElement.style.overflow = "hidden";
+        this.domElement = domElement;
+        const viewElement = document.createElement("div");
+        viewElement.style.transformOrigin = "0 0";
+        viewElement.style.pointerEvents = "none";
+        domElement.appendChild(viewElement);
+        const cameraElement = document.createElement("div");
+        cameraElement.style.transformStyle = "preserve-3d";
+        viewElement.appendChild(cameraElement);
+        this.getSize = function() {
+            return {
+                width: _width,
+                height: _height
+            };
+        };
+        this.render = function(scene, camera) {
+            const fov = camera.projectionMatrix.elements[5] * _heightHalf;
+            if (camera.view && camera.view.enabled) {
+                // view offset
+                viewElement.style.transform = `translate( ${-camera.view.offsetX * (_width / camera.view.width)}px, ${-camera.view.offsetY * (_height / camera.view.height)}px )`;
+                // view fullWidth and fullHeight, view width and height
+                viewElement.style.transform += `scale( ${camera.view.fullWidth / camera.view.width}, ${camera.view.fullHeight / camera.view.height} )`;
+            } else viewElement.style.transform = "";
+            if (scene.matrixWorldAutoUpdate === true) scene.updateMatrixWorld();
+            if (camera.parent === null && camera.matrixWorldAutoUpdate === true) camera.updateMatrixWorld();
+            let tx, ty;
+            if (camera.isOrthographicCamera) {
+                tx = -(camera.right + camera.left) / 2;
+                ty = (camera.top + camera.bottom) / 2;
+            }
+            const scaleByViewOffset = camera.view && camera.view.enabled ? camera.view.height / camera.view.fullHeight : 1;
+            const cameraCSSMatrix = camera.isOrthographicCamera ? `scale( ${scaleByViewOffset} )` + "scale(" + fov + ")" + "translate(" + epsilon(tx) + "px," + epsilon(ty) + "px)" + getCameraCSSMatrix(camera.matrixWorldInverse) : `scale( ${scaleByViewOffset} )` + "translateZ(" + fov + "px)" + getCameraCSSMatrix(camera.matrixWorldInverse);
+            const perspective = camera.isPerspectiveCamera ? "perspective(" + fov + "px) " : "";
+            const style = perspective + cameraCSSMatrix + "translate(" + _widthHalf + "px," + _heightHalf + "px)";
+            if (cache.camera.style !== style) {
+                cameraElement.style.transform = style;
+                cache.camera.style = style;
+            }
+            renderObject(scene, scene, camera, cameraCSSMatrix);
+        };
+        this.setSize = function(width, height) {
+            _width = width;
+            _height = height;
+            _widthHalf = _width / 2;
+            _heightHalf = _height / 2;
+            domElement.style.width = width + "px";
+            domElement.style.height = height + "px";
+            viewElement.style.width = width + "px";
+            viewElement.style.height = height + "px";
+            cameraElement.style.width = width + "px";
+            cameraElement.style.height = height + "px";
+        };
+        function epsilon(value) {
+            return Math.abs(value) < 1e-10 ? 0 : value;
+        }
+        function getCameraCSSMatrix(matrix) {
+            const elements = matrix.elements;
+            return "matrix3d(" + epsilon(elements[0]) + "," + epsilon(-elements[1]) + "," + epsilon(elements[2]) + "," + epsilon(elements[3]) + "," + epsilon(elements[4]) + "," + epsilon(-elements[5]) + "," + epsilon(elements[6]) + "," + epsilon(elements[7]) + "," + epsilon(elements[8]) + "," + epsilon(-elements[9]) + "," + epsilon(elements[10]) + "," + epsilon(elements[11]) + "," + epsilon(elements[12]) + "," + epsilon(-elements[13]) + "," + epsilon(elements[14]) + "," + epsilon(elements[15]) + ")";
+        }
+        function getObjectCSSMatrix(matrix) {
+            const elements = matrix.elements;
+            const matrix3d = "matrix3d(" + epsilon(elements[0]) + "," + epsilon(elements[1]) + "," + epsilon(elements[2]) + "," + epsilon(elements[3]) + "," + epsilon(-elements[4]) + "," + epsilon(-elements[5]) + "," + epsilon(-elements[6]) + "," + epsilon(-elements[7]) + "," + epsilon(elements[8]) + "," + epsilon(elements[9]) + "," + epsilon(elements[10]) + "," + epsilon(elements[11]) + "," + epsilon(elements[12]) + "," + epsilon(elements[13]) + "," + epsilon(elements[14]) + "," + epsilon(elements[15]) + ")";
+            return "translate(-50%,-50%)" + matrix3d;
+        }
+        function renderObject(object, scene, camera, cameraCSSMatrix) {
+            if (object.isCSS3DObject) {
+                const visible = object.visible === true && object.layers.test(camera.layers) === true;
+                object.element.style.display = visible === true ? "" : "none";
+                if (visible === true) {
+                    object.onBeforeRender(_this, scene, camera);
+                    let style;
+                    if (object.isCSS3DSprite) {
+                        // http://swiftcoder.wordpress.com/2008/11/25/constructing-a-billboard-matrix/
+                        _matrix.copy(camera.matrixWorldInverse);
+                        _matrix.transpose();
+                        if (object.rotation2D !== 0) _matrix.multiply(_matrix2.makeRotationZ(object.rotation2D));
+                        object.matrixWorld.decompose(_position, _quaternion, _scale);
+                        _matrix.setPosition(_position);
+                        _matrix.scale(_scale);
+                        _matrix.elements[3] = 0;
+                        _matrix.elements[7] = 0;
+                        _matrix.elements[11] = 0;
+                        _matrix.elements[15] = 1;
+                        style = getObjectCSSMatrix(_matrix);
+                    } else style = getObjectCSSMatrix(object.matrixWorld);
+                    const element = object.element;
+                    const cachedObject = cache.objects.get(object);
+                    if (cachedObject === undefined || cachedObject.style !== style) {
+                        element.style.transform = style;
+                        const objectData = {
+                            style: style
+                        };
+                        cache.objects.set(object, objectData);
+                    }
+                    if (element.parentNode !== cameraElement) cameraElement.appendChild(element);
+                    object.onAfterRender(_this, scene, camera);
+                }
+            }
+            for(let i = 0, l = object.children.length; i < l; i++)renderObject(object.children[i], scene, camera, cameraCSSMatrix);
+        }
+    }
+}
+
+},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"cfP3d":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "RGBELoader", ()=>RGBELoader);
+var _three = require("three");
+// https://github.com/mrdoob/three.js/issues/5552
+// http://en.wikipedia.org/wiki/RGBE_image_format
+class RGBELoader extends (0, _three.DataTextureLoader) {
+    constructor(manager){
+        super(manager);
+        this.type = (0, _three.HalfFloatType);
+    }
+    // adapted from http://www.graphics.cornell.edu/~bjw/rgbe.html
+    parse(buffer) {
+        const /* default error routine.  change this to change error handling */ rgbe_read_error = 1, rgbe_write_error = 2, rgbe_format_error = 3, rgbe_memory_error = 4, rgbe_error = function(rgbe_error_code, msg) {
+            switch(rgbe_error_code){
+                case rgbe_read_error:
+                    throw new Error("THREE.RGBELoader: Read Error: " + (msg || ""));
+                case rgbe_write_error:
+                    throw new Error("THREE.RGBELoader: Write Error: " + (msg || ""));
+                case rgbe_format_error:
+                    throw new Error("THREE.RGBELoader: Bad File Format: " + (msg || ""));
+                default:
+                case rgbe_memory_error:
+                    throw new Error("THREE.RGBELoader: Memory Error: " + (msg || ""));
+            }
+        }, /* offsets to red, green, and blue components in a data (float) pixel */ //RGBE_DATA_RED = 0,
+        //RGBE_DATA_GREEN = 1,
+        //RGBE_DATA_BLUE = 2,
+        /* number of floats per pixel, use 4 since stored in rgba image format */ //RGBE_DATA_SIZE = 4,
+        /* flags indicating which fields in an rgbe_header_info are valid */ RGBE_VALID_PROGRAMTYPE = 1, RGBE_VALID_FORMAT = 2, RGBE_VALID_DIMENSIONS = 4, NEWLINE = "\n", fgets = function(buffer, lineLimit, consume) {
+            const chunkSize = 128;
+            lineLimit = !lineLimit ? 1024 : lineLimit;
+            let p = buffer.pos, i = -1, len = 0, s = "", chunk = String.fromCharCode.apply(null, new Uint16Array(buffer.subarray(p, p + chunkSize)));
+            while(0 > (i = chunk.indexOf(NEWLINE)) && len < lineLimit && p < buffer.byteLength){
+                s += chunk;
+                len += chunk.length;
+                p += chunkSize;
+                chunk += String.fromCharCode.apply(null, new Uint16Array(buffer.subarray(p, p + chunkSize)));
+            }
+            if (-1 < i) {
+                /*for (i=l-1; i>=0; i--) {
+						byteCode = m.charCodeAt(i);
+						if (byteCode > 0x7f && byteCode <= 0x7ff) byteLen++;
+						else if (byteCode > 0x7ff && byteCode <= 0xffff) byteLen += 2;
+						if (byteCode >= 0xDC00 && byteCode <= 0xDFFF) i--; //trail surrogate
+					}*/ if (false !== consume) buffer.pos += len + i + 1;
+                return s + chunk.slice(0, i);
+            }
+            return false;
+        }, /* minimal header reading.  modify if you want to parse more information */ RGBE_ReadHeader = function(buffer) {
+            // regexes to parse header info fields
+            const magic_token_re = /^#\?(\S+)/, gamma_re = /^\s*GAMMA\s*=\s*(\d+(\.\d+)?)\s*$/, exposure_re = /^\s*EXPOSURE\s*=\s*(\d+(\.\d+)?)\s*$/, format_re = /^\s*FORMAT=(\S+)\s*$/, dimensions_re = /^\s*\-Y\s+(\d+)\s+\+X\s+(\d+)\s*$/, // RGBE format header struct
+            header = {
+                valid: 0,
+                /* indicate which fields are valid */ string: "",
+                /* the actual header string */ comments: "",
+                /* comments found in header */ programtype: "RGBE",
+                /* listed at beginning of file to identify it after "#?". defaults to "RGBE" */ format: "",
+                /* RGBE format, default 32-bit_rle_rgbe */ gamma: 1.0,
+                /* image has already been gamma corrected with given gamma. defaults to 1.0 (no correction) */ exposure: 1.0,
+                /* a value of 1.0 in an image corresponds to <exposure> watts/steradian/m^2. defaults to 1.0 */ width: 0,
+                height: 0 /* image dimensions, width/height */ 
+            };
+            let line, match;
+            if (buffer.pos >= buffer.byteLength || !(line = fgets(buffer))) rgbe_error(rgbe_read_error, "no header found");
+            /* if you want to require the magic token then uncomment the next line */ if (!(match = line.match(magic_token_re))) rgbe_error(rgbe_format_error, "bad initial token");
+            header.valid |= RGBE_VALID_PROGRAMTYPE;
+            header.programtype = match[1];
+            header.string += line + "\n";
+            while(true){
+                line = fgets(buffer);
+                if (false === line) break;
+                header.string += line + "\n";
+                if ("#" === line.charAt(0)) {
+                    header.comments += line + "\n";
+                    continue; // comment line
+                }
+                if (match = line.match(gamma_re)) header.gamma = parseFloat(match[1]);
+                if (match = line.match(exposure_re)) header.exposure = parseFloat(match[1]);
+                if (match = line.match(format_re)) {
+                    header.valid |= RGBE_VALID_FORMAT;
+                    header.format = match[1]; //'32-bit_rle_rgbe';
+                }
+                if (match = line.match(dimensions_re)) {
+                    header.valid |= RGBE_VALID_DIMENSIONS;
+                    header.height = parseInt(match[1], 10);
+                    header.width = parseInt(match[2], 10);
+                }
+                if (header.valid & RGBE_VALID_FORMAT && header.valid & RGBE_VALID_DIMENSIONS) break;
+            }
+            if (!(header.valid & RGBE_VALID_FORMAT)) rgbe_error(rgbe_format_error, "missing format specifier");
+            if (!(header.valid & RGBE_VALID_DIMENSIONS)) rgbe_error(rgbe_format_error, "missing image size specifier");
+            return header;
+        }, RGBE_ReadPixels_RLE = function(buffer, w, h) {
+            const scanline_width = w;
+            if (// run length encoding is not allowed so read flat
+            scanline_width < 8 || scanline_width > 0x7fff || // this file is not run length encoded
+            2 !== buffer[0] || 2 !== buffer[1] || buffer[2] & 0x80) // return the flat buffer
+            return new Uint8Array(buffer);
+            if (scanline_width !== (buffer[2] << 8 | buffer[3])) rgbe_error(rgbe_format_error, "wrong scanline width");
+            const data_rgba = new Uint8Array(4 * w * h);
+            if (!data_rgba.length) rgbe_error(rgbe_memory_error, "unable to allocate buffer space");
+            let offset = 0, pos = 0;
+            const ptr_end = 4 * scanline_width;
+            const rgbeStart = new Uint8Array(4);
+            const scanline_buffer = new Uint8Array(ptr_end);
+            let num_scanlines = h;
+            // read in each successive scanline
+            while(num_scanlines > 0 && pos < buffer.byteLength){
+                if (pos + 4 > buffer.byteLength) rgbe_error(rgbe_read_error);
+                rgbeStart[0] = buffer[pos++];
+                rgbeStart[1] = buffer[pos++];
+                rgbeStart[2] = buffer[pos++];
+                rgbeStart[3] = buffer[pos++];
+                if (2 != rgbeStart[0] || 2 != rgbeStart[1] || (rgbeStart[2] << 8 | rgbeStart[3]) != scanline_width) rgbe_error(rgbe_format_error, "bad rgbe scanline format");
+                // read each of the four channels for the scanline into the buffer
+                // first red, then green, then blue, then exponent
+                let ptr = 0, count;
+                while(ptr < ptr_end && pos < buffer.byteLength){
+                    count = buffer[pos++];
+                    const isEncodedRun = count > 128;
+                    if (isEncodedRun) count -= 128;
+                    if (0 === count || ptr + count > ptr_end) rgbe_error(rgbe_format_error, "bad scanline data");
+                    if (isEncodedRun) {
+                        // a (encoded) run of the same value
+                        const byteValue = buffer[pos++];
+                        for(let i = 0; i < count; i++)scanline_buffer[ptr++] = byteValue;
+                    //ptr += count;
+                    } else {
+                        // a literal-run
+                        scanline_buffer.set(buffer.subarray(pos, pos + count), ptr);
+                        ptr += count;
+                        pos += count;
+                    }
+                }
+                // now convert data from buffer into rgba
+                // first red, then green, then blue, then exponent (alpha)
+                const l = scanline_width; //scanline_buffer.byteLength;
+                for(let i = 0; i < l; i++){
+                    let off = 0;
+                    data_rgba[offset] = scanline_buffer[i + off];
+                    off += scanline_width; //1;
+                    data_rgba[offset + 1] = scanline_buffer[i + off];
+                    off += scanline_width; //1;
+                    data_rgba[offset + 2] = scanline_buffer[i + off];
+                    off += scanline_width; //1;
+                    data_rgba[offset + 3] = scanline_buffer[i + off];
+                    offset += 4;
+                }
+                num_scanlines--;
+            }
+            return data_rgba;
+        };
+        const RGBEByteToRGBFloat = function(sourceArray, sourceOffset, destArray, destOffset) {
+            const e = sourceArray[sourceOffset + 3];
+            const scale = Math.pow(2.0, e - 128.0) / 255.0;
+            destArray[destOffset + 0] = sourceArray[sourceOffset + 0] * scale;
+            destArray[destOffset + 1] = sourceArray[sourceOffset + 1] * scale;
+            destArray[destOffset + 2] = sourceArray[sourceOffset + 2] * scale;
+            destArray[destOffset + 3] = 1;
+        };
+        const RGBEByteToRGBHalf = function(sourceArray, sourceOffset, destArray, destOffset) {
+            const e = sourceArray[sourceOffset + 3];
+            const scale = Math.pow(2.0, e - 128.0) / 255.0;
+            // clamping to 65504, the maximum representable value in float16
+            destArray[destOffset + 0] = (0, _three.DataUtils).toHalfFloat(Math.min(sourceArray[sourceOffset + 0] * scale, 65504));
+            destArray[destOffset + 1] = (0, _three.DataUtils).toHalfFloat(Math.min(sourceArray[sourceOffset + 1] * scale, 65504));
+            destArray[destOffset + 2] = (0, _three.DataUtils).toHalfFloat(Math.min(sourceArray[sourceOffset + 2] * scale, 65504));
+            destArray[destOffset + 3] = (0, _three.DataUtils).toHalfFloat(1);
+        };
+        const byteArray = new Uint8Array(buffer);
+        byteArray.pos = 0;
+        const rgbe_header_info = RGBE_ReadHeader(byteArray);
+        const w = rgbe_header_info.width, h = rgbe_header_info.height, image_rgba_data = RGBE_ReadPixels_RLE(byteArray.subarray(byteArray.pos), w, h);
+        let data, type;
+        let numElements;
+        switch(this.type){
+            case 0, _three.FloatType:
+                numElements = image_rgba_data.length / 4;
+                const floatArray = new Float32Array(numElements * 4);
+                for(let j = 0; j < numElements; j++)RGBEByteToRGBFloat(image_rgba_data, j * 4, floatArray, j * 4);
+                data = floatArray;
+                type = (0, _three.FloatType);
+                break;
+            case 0, _three.HalfFloatType:
+                numElements = image_rgba_data.length / 4;
+                const halfArray = new Uint16Array(numElements * 4);
+                for(let j = 0; j < numElements; j++)RGBEByteToRGBHalf(image_rgba_data, j * 4, halfArray, j * 4);
+                data = halfArray;
+                type = (0, _three.HalfFloatType);
+                break;
+            default:
+                throw new Error("THREE.RGBELoader: Unsupported type: " + this.type);
+        }
+        return {
+            width: w,
+            height: h,
+            data: data,
+            header: rgbe_header_info.string,
+            gamma: rgbe_header_info.gamma,
+            exposure: rgbe_header_info.exposure,
+            type: type
+        };
+    }
+    setDataType(value) {
+        this.type = value;
+        return this;
+    }
+    load(url, onLoad, onProgress, onError) {
+        function onLoadCallback(texture, texData) {
+            switch(texture.type){
+                case 0, _three.FloatType:
+                case 0, _three.HalfFloatType:
+                    texture.colorSpace = (0, _three.LinearSRGBColorSpace);
+                    texture.minFilter = (0, _three.LinearFilter);
+                    texture.magFilter = (0, _three.LinearFilter);
+                    texture.generateMipmaps = false;
+                    texture.flipY = true;
+                    break;
+            }
+            if (onLoad) onLoad(texture, texData);
+        }
+        return super.load(url, onLoadCallback, onProgress, onError);
+    }
+}
+
+},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"gBv8W":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "ScrollModule", ()=>ScrollModule);
+var _three = require("three");
+var _timer = require("three/examples/jsm/misc/Timer");
+let timeout;
+class ScrollModule {
+    #normalClock = new (0, _three.Clock)(false);
+    #inverseClock = new (0, _three.Clock)(false);
+    #normalTime = 0;
+    #inverseTime = 0;
+    #normalTimer = 0;
+    #inverseTimer = 0;
+    #finalTime = 0;
+    #handleWheelEvent = this.handleWheelEvent.bind(this);
+    #isScrolling = false;
+    #count = 0;
+    // Valores constantes
+    timeoutDuration = 400;
+    smoothingFactor = 0.1;
+    ///0.08 for mouse wheel
+    //0.01 for scrollin with maouse pad
+    constructor(maxValue, timeout = 1000, intensity = 0.01){
+        this.direction = null;
+        this.intensity = intensity;
+        this.value = this.#finalTime;
+        this.init();
+    }
+    init() {
+        // computer listener
+        window.addEventListener("wheel", this.#handleWheelEvent);
+    }
+    //setupListener
+    handleWheelEvent(event) {
+        //clearTimeout(timeout); // Limpiamos el temporizador existente;
+        if (event.deltaY > 0) this.direction = "down";
+        else this.direction = "up";
+        if (this.#count >= limit) console.log("SCROLL RESET");
+    // Definimos la función que queremos ejecutar después de 900 milisegundos
+    /*
+    timeout = setTimeout(() => {
+      // Aquí colocas la función que deseas ejecutar
+      console.log("El movimiento se ha detenido");
+      this.direction = null;
+      this.#normalClock.stop();
+      this.#inverseClock.stop();
+      this.#isScrolling = false;
+    }, this.timeoutDuration);
+
+    */ }
+    updateScroll() {
+        //EL RELOJ NO DEBERIA MANTENER NINGUN VALOR A MENOS QUE SE LLAME
+        switch(this.direction){
+            case "up":
+                //Scrolling up
+                if (!this.#inverseClock.running) {
+                    this.#inverseClock.start();
+                    console.log("Encender Reloj inverso");
+                    this.#isScrolling = true;
+                }
+                this.#inverseTime = this.#inverseClock.getElapsedTime();
+                this.#inverseTimer += this.#inverseTime;
+                break;
+            case "down":
+                //Scrolling down
+                if (!this.#normalClock.running) {
+                    this.#normalClock.start();
+                    console.log("Encender Reloj");
+                    this.#isScrolling = true;
+                }
+                this.#normalTime = this.#normalClock.getElapsedTime();
+                this.#normalTimer += this.#normalTime;
+                break;
+            default:
+                break;
+        }
+        //final time update
+        this.getTime();
+    }
+    //get relative final time
+    getTime() {
+        this.#isScrolling;
+        // Calculamos el tiempo relativo multiplicado por la intensidad
+        //console.log(this.#normalTimer, "<<>>", this.#inverseTimer, "\n", this.#normalTimer - this.#inverseTimer)
+        const time = (this.#normalTimer - this.#inverseTimer) * this.intensity;
+        // Si el tiempo resultante es menor que 0, establecemos finalTime en 0, de lo contrario, en el tiempo calculado
+        if (time < 0.01) {
+            this.#inverseTimer = 0;
+            this.#finalTime = 0;
+        } else // Suavizado exponencial
+        this.#finalTime += (time - this.#finalTime) * this.smoothingFactor;
+        //console.log(this.#finalTime, " <<");
+        this.value = this.#finalTime;
+    //console.log(this.value)
+    }
+}
+
+},{"three":"ktPTu","three/examples/jsm/misc/Timer":"gQiHM","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"gQiHM":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "Timer", ()=>Timer);
+parcelHelpers.export(exports, "FixedTimer", ()=>FixedTimer);
+class Timer {
+    constructor(){
+        this._previousTime = 0;
+        this._currentTime = 0;
+        this._startTime = now();
+        this._delta = 0;
+        this._elapsed = 0;
+        this._timescale = 1;
+        // use Page Visibility API to avoid large time delta values
+        this._usePageVisibilityAPI = typeof document !== "undefined" && document.hidden !== undefined;
+        if (this._usePageVisibilityAPI === true) {
+            this._pageVisibilityHandler = handleVisibilityChange.bind(this);
+            document.addEventListener("visibilitychange", this._pageVisibilityHandler, false);
+        }
+    }
+    getDelta() {
+        return this._delta / 1000;
+    }
+    getElapsed() {
+        return this._elapsed / 1000;
+    }
+    getTimescale() {
+        return this._timescale;
+    }
+    setTimescale(timescale) {
+        this._timescale = timescale;
+        return this;
+    }
+    reset() {
+        this._currentTime = now() - this._startTime;
+        return this;
+    }
+    dispose() {
+        if (this._usePageVisibilityAPI === true) document.removeEventListener("visibilitychange", this._pageVisibilityHandler);
+        return this;
+    }
+    update(timestamp) {
+        this._previousTime = this._currentTime;
+        this._currentTime = (timestamp !== undefined ? timestamp : now()) - this._startTime;
+        this._delta = (this._currentTime - this._previousTime) * this._timescale;
+        this._elapsed += this._delta; // _elapsed is the accumulation of all previous deltas
+        return this;
+    }
+}
+class FixedTimer extends Timer {
+    constructor(fps = 60){
+        super();
+        this._delta = 1 / fps * 1000;
+    }
+    update() {
+        this._elapsed += this._delta * this._timescale; // _elapsed is the accumulation of all previous deltas
+        return this;
+    }
+}
+function now() {
+    return (typeof performance === "undefined" ? Date : performance).now();
+}
+function handleVisibilityChange() {
+    if (document.hidden === false) this.reset();
+}
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"lGbfQ":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "COUNT", ()=>COUNT);
+parcelHelpers.export(exports, "reset", ()=>reset);
+parcelHelpers.export(exports, "FlowControl", ()=>FlowControl);
+var _three = require("three");
+//retroceder en el reloj
+window.addEventListener("wheel", handlerScroll);
+let direction = "";
+let COUNT = 0;
+function reset() {
+    COUNT = 0;
+    console.log(COUNT, "RESTABLECER");
+}
+class FlowControl {
+    constructor(limit = 200){
+        this.time = 0;
+        this.limit = limit;
+        this.magnitud = 0;
+        this.nClock = new (0, _three.Clock)();
+        this.iClock = new (0, _three.Clock)();
+        this.count = 0;
+        this.handlerScroll = this.handlerScroll.bind(this);
+        this.direction = null;
+        //init function
+        this.init();
+    }
+    init() {
+        window.addEventListener("wheel", this.handlerScroll);
+    }
+    handlerScroll(event) {
+        if (event.deltaY > 0) this.direction = "down";
+        else this.direction = "up";
+        //select direcction of limit
+        switch(this.direction){
+            case "up":
+                this.count--;
+                break;
+            case "down":
+                this.count++;
+                break;
+        }
+    }
+    update() {
+        switch(this.direction){
+            case "down":
+                this.setClock(this.inverse, this.nClock, this.iClock);
+                break;
+            case "up":
+                this.setClock(this.normal, this.iClock, this.nClock);
+                break;
+        }
+    }
+    setClock(pausedTime, clock, pausedClock) {
+        let time = 0;
+        this.magnitud = Math.abs(this.count);
+        if (this.magnitud >= this.limit) {
+            time = clock.getElapsedTime();
+            console.log(time, pausedTime);
+            pausedTime = 0;
+            pausedClock.stop();
+            return time;
+        }
+    }
+    debug() {
+        console.log("n:", this.normal, "i:", this.inverse, "magnitud:", this.count, this.direction);
+    }
+}
+function handlerScroll(event) {
+    if (event.deltaY > 0) direction = "down";
+    else direction = "up";
+    //select direcction of limit
+    switch(direction){
+        case "up":
+            COUNT--;
+            break;
+        case "down":
+            COUNT++;
+            break;
+    }
+}
+
+},{"three":"ktPTu","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"k3RBY":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "LightSource", ()=>LightSource);
+var _three = require("three");
+var _noiseGlsl = require("../shaders/noise.glsl");
+var _noiseGlslDefault = parcelHelpers.interopDefault(_noiseGlsl);
+class LightSource extends (0, _three.Mesh) {
+    constructor(){
+        super();
+        this.userData.time = {
+            value: 0
+        };
+        let g = new (0, _three.CircleGeometry)(50, 64);
+        let m = new (0, _three.MeshBasicMaterial)({
+            color: 0xbb0000,
+            onBeforeCompile: (shader)=>{
+                shader.uniforms.time = this.userData.time;
+                shader.fragmentShader = `
+          uniform float time;
+          ${shader.fragmentShader}
+        `.replace(`void main() {`, `
+          ${(0, _noiseGlslDefault.default)}
+          void main() {`).replace(`vec4 diffuseColor = vec4( diffuse, opacity );`, `
+          vec2 uv = vUv - 0.5;
+          vec3 col = vec3(0);
+          float f = smoothstep(0.5, 0., length(uv));
+          f = pow(f, 4.);
+          float n = snoise(vec3(uv * 7., time)) * 0.5 + 0.5;
+          n = n * 0.5 + 0.5;          
+          col = mix(col, diffuse, f * n);
+          vec4 diffuseColor = vec4( col, opacity );
+          `);
+                console.log(shader.fragmentShader);
+            }
+        });
+        m.defines = {
+            USE_UV: ""
+        };
+        this.geometry = g;
+        this.material = m;
+    }
+}
+
+},{"three":"ktPTu","../shaders/noise.glsl":"36jEY","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"36jEY":[function(require,module,exports) {
+module.exports = "#define GLSLIFY 1\n//	Simplex 3D Noise \n//	by Ian McEwan, Ashima Arts\n//\nvec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}\nvec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}\n\nfloat snoise(vec3 v){ \n  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;\n  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);\n\n// First corner\n  vec3 i  = floor(v + dot(v, C.yyy) );\n  vec3 x0 =   v - i + dot(i, C.xxx) ;\n\n// Other corners\n  vec3 g = step(x0.yzx, x0.xyz);\n  vec3 l = 1.0 - g;\n  vec3 i1 = min( g.xyz, l.zxy );\n  vec3 i2 = max( g.xyz, l.zxy );\n\n  //  x0 = x0 - 0. + 0.0 * C \n  vec3 x1 = x0 - i1 + 1.0 * C.xxx;\n  vec3 x2 = x0 - i2 + 2.0 * C.xxx;\n  vec3 x3 = x0 - 1. + 3.0 * C.xxx;\n\n// Permutations\n  i = mod(i, 289.0 ); \n  vec4 p = permute( permute( permute( \n             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))\n           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) \n           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));\n\n// Gradients\n// ( N*N points uniformly over a square, mapped onto an octahedron.)\n  float n_ = 1.0/7.0; // N=7\n  vec3  ns = n_ * D.wyz - D.xzx;\n\n  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)\n\n  vec4 x_ = floor(j * ns.z);\n  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)\n\n  vec4 x = x_ *ns.x + ns.yyyy;\n  vec4 y = y_ *ns.x + ns.yyyy;\n  vec4 h = 1.0 - abs(x) - abs(y);\n\n  vec4 b0 = vec4( x.xy, y.xy );\n  vec4 b1 = vec4( x.zw, y.zw );\n\n  vec4 s0 = floor(b0)*2.0 + 1.0;\n  vec4 s1 = floor(b1)*2.0 + 1.0;\n  vec4 sh = -step(h, vec4(0.0));\n\n  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;\n  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;\n\n  vec3 p0 = vec3(a0.xy,h.x);\n  vec3 p1 = vec3(a0.zw,h.y);\n  vec3 p2 = vec3(a1.xy,h.z);\n  vec3 p3 = vec3(a1.zw,h.w);\n\n//Normalise gradients\n  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));\n  p0 *= norm.x;\n  p1 *= norm.y;\n  p2 *= norm.z;\n  p3 *= norm.w;\n\n// Mix final noise value\n  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);\n  m = m * m;\n  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), \n                                dot(p2,x2), dot(p3,x3) ) );\n}";
+
+},{}],"c9M7X":[function(require,module,exports) {
+module.exports = require("9ec3dfef8606e36c").getBundleURL("hcaXs") + "studio.a5ed1e45.hdr" + "?" + Date.now();
+
+},{"9ec3dfef8606e36c":"j9GCc"}],"abAUt":[function(require,module,exports) {
+module.exports = require("bebc2176e0bc2603").getBundleURL("hcaXs") + "mainScene.e2799a16.glb" + "?" + Date.now();
+
+},{"bebc2176e0bc2603":"j9GCc"}],"drHEF":[function(require,module,exports) {
+module.exports = require("989e72efad70c9c5").getBundleURL("hcaXs") + "point.d05d7333.png" + "?" + Date.now();
+
+},{"989e72efad70c9c5":"j9GCc"}]},["fbff6","ait1o"], "ait1o", "parcelRequire94c2")
 
 //# sourceMappingURL=index.5d3903fb.js.map

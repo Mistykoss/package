@@ -3,29 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="index.755baf2d.css">
+    <link rel="stylesheet" href="index.8fb02ff2.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
     <title>Scene</title>
 </head>
 <body>
-    <div id="cortain" class="cortain">
+    <header class="nav-bar">
+        <div id="side-menu" class="nav-bar__side-item nav-bar__side-menu"></div>
+        <div class="nav-bar__logo"></div>
+        <div class="nav-bar__side-item nav-bar__shop"></div>
+    </header>
+    <section id="cortain" class="cortain">
         <div class="cortain__sheet cortain__top"></div>
         <div class="cortain__sheet cortain__bottom"></div>
-    </div>
-    <div id="front-text-container" class="front-container full-screen-container">
+    </section>
+    <section id="front-text-container" class=" front-container full-screen-container">
         <div><p class="anim-item front-container__description-pack" data-name="pack">PACKAGING AND<br> AUTOMATION SOLUTIONS<br> FOR YOUR INDUSTRY</p></div>
         <div><p class="anim-item shadow-text front-container__span-athenas3" data-name="s3">ATHENA S3</p></div>
         <div><p class="anim-item shadow-text front-container__span-athenas3-b" data-name="s3">ATHENA S3</p></div>
         <div><span class="anim-item front-container__span-fp-version" data-name="fp-version">FP Version</span></div>
         <div><span class="anim-item front-container__span-fs-version" data-name="fs-version">FS Vesion</span></div>
         <div><span class="anim-item front-container__span-hmi" data-name="hdmi">INTUITIVE<br> HMI DESIGN</span></div>
-    </div>
-    <div id="back-text-container" class="back-container full-screen-container">
+        <div class="industry">
+            <span class="industry__title">Industry<br> Patners</span>
+            <div id="industry-corousel" class="industry-corousel">
+
+            </div>
+        </div>
+        <div class="proudly">
+            <span class="proudly__title">Proudly Providing<br> Solutions For</span>
+            <div id="proudly-corousel" class="proudly-corousel">
+
+            </div>
+        </div>
+    </section>
+
+    <section id="back-text-container" class=" back-container full-screen-container">
         <div><p class="anim-item back-container__description-food">FOOD<br> PACKAGING &<br> AUTOMATION <br>SOLUTIONS</p></div>
         <div><p class="anim-item back-container__description-flow outline-text">ATHENA-S3<br> HORIZONTAL FLOW <br>WRAPPER <br>STANDARD <br>FEATURES</p></div>
         <div><p class="anim-item back-container__heavy">Heavy duty<br>extruded and <br>adjustable legs</p></div>
         <div><img class="anim-item back-container__logo" src="logo.0a4716b0.png" alt="Logo Packaging Make Easy"></div>
-    </div>
+    </section>
 
+    <section id="articles" class="articles center-absolute">
+        <div class="articles__header">
+            <div class="header__title">Latest Articles</div>
+            <div class="header__more-btn">View More Articles</div>
+        </div>
+        <div class="articles__main-article">
+            <div class="main-article__img">
+                <img src="main-a.b0d6a7ca.png" alt="Article">
+            </div>
+            <div class="main-article__footer">
+                <div class="footer__date">December 31 - 2023</div>
+                <div class="footer__span">Elevating Your Packaging: Quality Materials, Directly from the Source</div>
+            </div>
+        </div>
+        <div class="articles__wrapper">
+            <div class="wrapper__list-article">
+                <div class="list-article__title">Elevating Your Packaging: Quality Materials, Directly from the Source</div>
+                <div class="list-article__span">December 31 - 2023 </div>
+                <div class="list-article__description">As the world of packaging continues to evolve, one sector that stands out for its innovation and growth potential is bakery packaging. With the bakery industry experiencing a surge in demand and competition, packaging professionals are compelled to rethink their strategies and embrace automation to boost efficiency and stay ahead in the game.</div>
+                <div class="list-article__preview">
+                    <img src="item-a.2f1ef84c.png" alt="">
+                </div>
+
+            </div>
+            <div class="wrapper__list-article">
+                <div class="list-article__title">Unveiling the Packaging Pizzazz</div>
+                <div class="list-article__span">December 31 - 2023</div>
+                <div class="list-article__description">Hey there, packaging aficionados! Today, I'm here to dish out some delicious insights into the world of food processing and the jaw-dropping role that packaging machinery, particularly from Packaging Made Easy, plays in the culinary circus. So, buckle up your taste buds, and let's embark on this flavorful journey!</div>
+                <div class="list-article__preview">
+                    <img src="item-b.b89092fe.png" alt="">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact-us" class="contact-us center-absolute"> 
+        <div class="contact-us__title">LET'S TALK <br>NOW</div>
+        <div class="contact-us__quote-btn">DO YOU WANT A QUOTE?</div>
+    </section>
+
+    <footer id="footer" class="center-absolute footer-main">
+        <div class="footer-container">
+            <div class="footer-container__logo"></div>
+            <ul class="footer-container__links">
+                <li class="links__item"><a href="">SHOP</a></li>
+                <li class="links__item"><a href="">MATERIALS</a></li>
+                <li class="links__item"><a href="">FILM</a></li>
+                <li class="links__item"><a href="">ABOUT US</a></li>
+                <li class="links__item"><a href="">AUTOMATION</a></li>
+                <li class="links__item"><a href="">CONTACT US</a></li>
+                <li class="links__item"><a href="">BLOG</a></li>
+                <li class="links__item"><a href="">SHIPPINH & RETURNS</a></li>
+            </ul>
+            <div class="footer-container__credits">© PACKAGING MADE EASY - All Rigts Reserved. by marcelodesignx</div>
+            <div class="footer-container__card-preview"></div>
+        </div>
+    </footer>
+
+    <div id="idle-video-container">
+        <video id="idle-video" src="idle.99d6d933.mp4" autoplay="" preload="auto" loop="" muted=""></video>
+    </div>
+    <script src="index.5d3903fb.js" defer=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
 </body>
-<script src="index.5d3903fb.js" defer=""></script>
 </html>
