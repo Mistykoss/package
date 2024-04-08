@@ -552,6 +552,11 @@ body {
   transition: all 1.5s;
 }
 
+div.dg.ac {
+  z-index: 200;
+  display: none;
+}
+
 :root {
   --scrolling: 0;
   --anim-item-pos: 0px;
