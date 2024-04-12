@@ -712,7 +712,7 @@ for(let i = 0; i < 15; i++){
     const light = new _three.PointLight(0xffffff, 2); // Color blanco (0xffffff), intensidad 5, distancia 300
     lights.push(light); // Agregar la luz al array
     const lightHelper = new _three.PointLightHelper(light, 0.35); // El segundo parámetro es el tamaño del helper
-    scene.add(lightHelper);
+    //scene.add(lightHelper);
     scene.add(light);
 }
 // Ahora lights contiene una lista de 5 luces PointLight con intensidad 5 y distancia 300
