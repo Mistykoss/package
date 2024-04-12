@@ -39113,7 +39113,7 @@ const TIMELINE = new Map([
             }, 0).add({
                 targets: items.carousel,
                 opacity: 1,
-                backgroundColor: "rgb(0 0 0 / 60%)"
+                backgroundColor: "rgba(0, 0, 0, 0.5);"
             }, 0);
         }
     ],
