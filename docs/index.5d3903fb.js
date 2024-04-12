@@ -587,7 +587,8 @@ const sceneHtmlFront = new _three.Scene();
 //const SCROLL = new ScrollModule();
 // Crear un renderizador
 const renderer = new _three.WebGLRenderer({
-    alpha: true
+    powerPreference: "high-performance",
+    antialias: true
 });
 const rendererHtmlFront = new (0, _css3Drenderer.CSS3DRenderer)();
 rendererHtmlFront.domElement.style.position = "absolute";
@@ -600,7 +601,7 @@ rendererHtmlFront.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0xffffff, 0);
 renderer.outputColorSpace = _three.SRGBColorSpace;
 renderer.toneMapping = _three.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.5;
 //setup shadows
 // shadowmaps are needed for this effect
 renderer.shadowMap.enabled = true;
@@ -609,19 +610,16 @@ renderer.shadowMap.autoUpdate = true;
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(rendererHtmlFront.domElement);
 //debig controls
-/*
-const orbit = new OrbitControls(
-  CAMERA.getCamera(),
-  rendererHtmlFront.domElement
-);
-*/ //#region HDR LOADER AND MODEL
+const orbit = new (0, _orbitControls.OrbitControls)((0, _word.CAMERA).getCamera(), renderer.domElement);
+const CAM = (0, _word.CAMERA).getCamera();
+//#region HDR LOADER AND MODEL
 const hdrLoader = new (0, _rgbeloader.RGBELoader)();
 // Ruta del archivo HDR
-const hdrPath = new URL(require("a2acd0dc482a9f8b"));
+const hdrPath = new URL(require("6096ab0b6430b682"));
 //SETUP MODEL
 let CTRL_ANIMATION;
 const loader = new (0, _gltfloader.GLTFLoader)();
-const url = new URL(require("7e837f2749c36727"));
+const url = new URL(require("da6fbb63da93c490"));
 let mixer = null;
 // Cargar la textura HDR
 hdrLoader.load(hdrPath, (hdrTexture)=>{
@@ -637,24 +635,26 @@ loader.load(url.href, (gltf)=>{
     model.clips = [];
     model.mixer = new _three.AnimationMixer(model);
     model.camera = model.getObjectByName("Camera");
+    console.log(model.camera);
     model.target = model.getObjectByName("target");
-    model.camView = model.getObjectByName("camView");
+    //model.camView = model.getObjectByName("camView");
     model.pageIndex = model.getObjectByName("pageIndex");
-    model.screenPivot = model.getObjectByName("screenPivot");
+    //model.screenPivot = model.getObjectByName("screenPivot");
     model.escudo = model.getObjectByName("escudo");
     model.escudo.visible = false;
     model.escudo = model.getObjectByName("escudo_copy");
     model.escudo.visible = false;
     mixer = model.mixer;
-    mixer.screenPivot = model.screenPivot;
-    mixer.screenPivot.visible = false;
-    mixer.screenPivot = model.screenPivot.position;
+    //mixer.screenPivot = model.screenPivot;
+    //mixer.screenPivot.visible = false;
+    //mixer.screenPivot = model.screenPivot.position;
     mixer.target = model.target;
     mixer.camera = model.camera;
     mixer.manager = {
         zoom: model.camView,
         pageIndex: model.pageIndex
     };
+    mixer.pageIndex = model.pageIndex;
     mixer.timeScale = 1;
     mixer.animations = [];
     mixer.childs = model.children;
@@ -664,30 +664,35 @@ loader.load(url.href, (gltf)=>{
     mixer.cameraContianer = new (0, _tweenJs.Group)();
     //mixer.cameraContianer.add(mixer.camera);
     const cam = (0, _word.CAMERA).getCamera();
-    model.camera.near = cam.near; // Distancia más cercana a la cámara antes de que se corte la vista
-    model.camera.far = cam.far; // Distancia más lejana a la cámara antes de que se corte la vista
-    model.camera.top = cam.top; // Altura de la vista desde la cámara
-    model.camera.bottom = cam.bottom; // Altura opuesta a 'top'
-    model.camera.left = cam.left; // Extremo izquierdo de la vista desde la cámara
-    model.camera.right = cam.right; // Extremo derecho de la vista desde la cámara
-    model.camera.zoom = cam.zoom; // Factor de zoom de la cámara
+    //model.camera.near = cam.near; // Distancia más cercana a la cámara antes de que se corte la vista
+    //model.camera.far = cam.far; // Distancia más lejana a la cámara antes de que se corte la vista
+    //model.camera.top = cam.top; // Altura de la vista desde la cámara
+    //model.camera.bottom = cam.bottom; // Altura opuesta a 'top'
+    //model.camera.left = cam.left; // Extremo izquierdo de la vista desde la cámara
+    //model.camera.right = cam.right; // Extremo derecho de la vista desde la cámara
+    //model.camera.zoom = cam.zoom; // Factor de zoom de la cámara
+    model.camera.aspect = cam.aspect;
     model.camera.updateProjectionMatrix();
     //RECORRER EL MESH Y APLICAR ESTILO
-    const mainModel = model.getObjectByName("mainModel");
+    const mainModel = model;
     mainModel.traverse((mesh)=>{
         if (mesh.isMesh) {
             // Llamar a la función para ajustar el material del Mesh
             mesh.material.metalness = 1;
             mesh.material.roughness = 0.5;
-            mesh.material.envMapIntensity = 1.25; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
+            mesh.material.envMapIntensity = 0.25; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
         }
     });
     //END
     // Add all animations (for nested models)
+    // Add all animations (for nested models)
     for(let index = 0; index < model.animations.length; index++){
         const clip = model.animations[index];
-        model.clips.push(mixer.clipAction(clip));
+        const action = mixer.clipAction(clip);
+        console.log(action._clip.name);
+        model.clips.push(action);
     }
+    console.log(model.clips);
     //activate all clips
     model.clips.forEach((clip)=>{
         clip.play();
@@ -704,36 +709,38 @@ loader.load(url.href, (gltf)=>{
 const lights = []; // Array para almacenar las luces
 // Crear las luces
 for(let i = 0; i < 15; i++){
-    const light = new _three.PointLight(0xffffff, 50); // Color blanco (0xffffff), intensidad 5, distancia 300
+    const light = new _three.PointLight(0xffffff, 2); // Color blanco (0xffffff), intensidad 5, distancia 300
     lights.push(light); // Agregar la luz al array
     const lightHelper = new _three.PointLightHelper(light, 0.35); // El segundo parámetro es el tamaño del helper
-//scene.add(lightHelper);
-//scene.add(light);
+    scene.add(lightHelper);
+    scene.add(light);
 }
 // Ahora lights contiene una lista de 5 luces PointLight con intensidad 5 y distancia 300
 // Crear una luz de tipo "point" (punto)
-const mouseLight = new _three.PointLight(0xfaffd3, 50); // Color amarillo (0xffff00), intensidad 1, distancia 100
+const mouseLight = new _three.PointLight(0xfaffd3, 0.3); // Color amarillo (0xffff00), intensidad 1, distancia 100
 mouseLight.position.set(0, 0, 0); // Posición de la luz en el centro de la escena
 scene.add(mouseLight);
 //GOD RAYS LITS
 // Crear una luz direccional
 const directionalLight = new _three.DirectionalLight(0xffffff, 20);
-directionalLight.position.set(0, 20, 10); // Establecer la posición de la luz si es necesario
-//directionalLight.shadow.mapSize.width = 1024;
-//directionalLight.shadow.mapSize.height = 1024;
-//directionalLight.shadow.camera.near = 0.1;
-//directionalLight.shadow.camera.far = 500;
-//directionalLight.shadow.bias = 0.001;
-//directionalLight.castShadow = true;
-//directionalLight.receiveShadow = true;
-//directionalLight.shadow.autoUpdate = true;
+directionalLight.position.set(-10, 5, -4); // Establecer la posición de la luz si es necesario
+directionalLight.shadow.mapSize.width = 1024;
+directionalLight.shadow.mapSize.height = 1024;
+directionalLight.shadow.camera.near = 0.1;
+directionalLight.shadow.camera.far = 500;
+directionalLight.shadow.bias = 0.001;
+directionalLight.castShadow = true;
+directionalLight.receiveShadow = true;
+directionalLight.shadow.autoUpdate = true;
 //set area
-//const area = 2;
-//directionalLight.shadow.camera.right = area;
-//directionalLight.shadow.camera.left = -area;
+const areaLargo = 5;
+const area = 3;
+//directionalLight.shadow.camera.right = areaLargo;
+//directionalLight.shadow.camera.left = -areaLargo;
 //directionalLight.shadow.camera.top = area;
 //directionalLight.shadow.camera.bottom = -area;
-//directionalLight.target.position.set(3.3, 0, -3.3)
+//
+//directionalLight.target.position.set(0, 0, 3)
 //directionalLight.target.updateMatrixWorld();
 //
 //scene.add(directionalLight.target);
@@ -742,10 +749,10 @@ const dirLightCameraHelper = new _three.CameraHelper(directionalLight.shadow.cam
 //scene.add(dirLightCameraHelper);
 //scene.add(directionalLight);
 const hemisphereLight = new _three.HemisphereLight(0xffffee, 0x202020, 1);
-scene.add(hemisphereLight);
+//scene.add(hemisphereLight);
 // Crear helper para la luz hemisférica
 const hemisphereLightHelper = new _three.HemisphereLightHelper(hemisphereLight, 1); // El segundo parámetro es el tamaño del helper
-scene.add(hemisphereLightHelper);
+//scene.add(hemisphereLightHelper);
 // Crear un ayudante de luz direccional para visualizar la luz
 const lightHelper = new _three.PointLightHelper(directionalLight, 0.2); // El segundo parámetro es el tamaño del helper
 //scene.add(lightHelper);
@@ -830,6 +837,7 @@ let isCurrentAnimCompleted = false;
 let isBeginAnimationCompleted = false;
 let isAnimSetup = false;
 let actualIndex = 2;
+let actualPage = 0;
 let currentTime = 0;
 let currentScroll = 0;
 let beginAnim = null;
@@ -839,6 +847,7 @@ let mousePos = new _three.Vector3();
 const timer = new _three.Clock();
 let time = 0;
 let parallaxPos = new _three.Vector3();
+let mouseData = new _three.Vector2();
 let isVideoPlaying = true;
 let postIsLoaded = false;
 //setup post procesing
@@ -880,6 +889,7 @@ const animate = ()=>{
     if (mixer !== null) {
         if (!postIsLoaded) {
             console.log("POST PROCESADO CARGADO");
+            console.log("camara cargada", mixer.camera);
             renderPass = new (0, _postprocessing.RenderPass)(scene, mixer.camera);
             renderPass.renderToScreen = false;
             gtoPass = new (0, _gtaopass.GTAOPass)(scene, mixer.camera, window.innerWidth, window.innerHeight);
@@ -909,7 +919,7 @@ const animate = ()=>{
                 gammaCorrection: true,
                 positionX: currentPosition.x,
                 positionY: currentPosition.y,
-                positionZ: currentPosition.z // Valor inicial para la posición en el eje Z
+                positionZ: currentPosition.z
             };
             const godraysPass = new (0, _threeGoodGodrays.GodraysPass)(directionalLight, mixer.camera, params);
             // If this is the last pass in your pipeline, set `renderToScreen` to `true`
@@ -969,21 +979,24 @@ const animate = ()=>{
                 }
             });
         }
-        loadScreen();
-        const actualPage = -mixer.manager.pageIndex.position.z;
+        //loadScreen();
+        actualPage = mixer.pageIndex.position.x;
+        //console.log(actualPage, "nuevo: ",mixer.pageIndex.position)
         mouseLight.position.lerp(mousePos, 0.05);
         if (!isBeginAnimationCompleted) {
             loadBeginAnimations();
             animModel(currentTime);
             (0, _scene.FRAME)(actualPage);
         }
-        if ((0, _flowControl.COUNT) >= 15) {
+        if ((0, _flowControl.COUNT) >= 5) {
+            if (actualPage === 15) return;
             if (!isAnimSetup) {
                 clock.start();
                 isAnimSetup = true;
                 console.log("INICIAR");
             } else {
                 currentTime = currentTime + clock.getElapsedTime() * 0.01;
+                //console.log(currentTime ,"DFGHJKL:")
                 animModel(currentTime);
                 if (actualPage === actualIndex) {
                     (0, _scene.FRAME)(actualPage);
@@ -991,18 +1004,18 @@ const animate = ()=>{
                     clock.stop();
                     (0, _flowControl.reset)();
                     actualIndex += 1;
-                    // console.log(actualPage, ">>", actualIndex);
+                    console.log(actualPage, ">>", actualIndex);
                     isAnimSetup = false;
                 }
             }
-        } else ;
-        //animateLights();
+        }
+        animateLights();
         //scrollValue = currentScroll + SCROLL.value;
-        // currentScroll = SCROLL.value;
+        //currentScroll = SCROLL.value;
         // console.log(currentScroll)
         //animModel(clock.getElapsedTime() * 0.1);
-        updateCamera(mixer);
-        // getAnimations();
+        //updateCamera(mixer);
+        getAnimations();
         //actualizar tween
         beginAnim.update();
         //renderizar
@@ -1014,7 +1027,7 @@ const animate = ()=>{
 animate();
 //#endregion
 const center = new _three.Vector3(5, 4, 3); // Vector que define el centro
-let radius = 5; // Radio de la trayectoria circular
+let radius = 3; // Radio de la trayectoria circular
 let radiusFactor = 2; // Radio de la trayectoria circular
 function animateLights() {
     const angleIncrement = Math.PI * 2 / lights.length; // Calcula el incremento del ángulo
@@ -1059,11 +1072,11 @@ function beginAnimation() {
         valor: 0
     };
     const fin = {
-        valor: 0.9
+        valor: 2.35
     };
     const tween = new (0, _tweenJs.Tween)(inicio).to(fin, 3000).easing((0, _tweenJs.Easing).Sinusoidal.Out).onUpdate(()=>{
         currentTime = inicio.valor;
-    // console.log(currentTime)
+    // console.log("PAGE> ", -mixer.manager.pageIndex.position.z)
     }).onComplete(()=>{
         isCurrentAnimCompleted = true;
     }).start();
@@ -1147,7 +1160,6 @@ function getNormalizedMousePosition(event) {
 // Agregar el plano a la escescene.add(plane)
 // Función para obtener la posición del mouse y actualizar el raycaster
 // Crear un raycaster
-let mouseData = new _three.Vector2();
 const raycaster = new _three.Raycaster();
 let intersectObjects = null;
 let timeOut;
@@ -1211,7 +1223,7 @@ function getScreen() {
     return SCREEN_REF;
 }
 
-},{"three":"ktPTu","three/examples/jsm/loaders/GLTFLoader":"dVRsF","three/examples/jsm/controls/OrbitControls":"7mqRv","three/examples/jsm/modifiers/CurveModifier":"iSJKe","./Model/Word":"5NsQR","./Model/Scene":"hmvjl","postprocessing":"bM81O","three/examples/jsm/postprocessing/OutputPass":"bggV1","three/examples/jsm/postprocessing/GTAOPass":"dW5AT","three-good-godrays":"j7KiZ","three/examples/jsm/renderers/CSS3DRenderer":"dWhzi","three/examples/jsm/loaders/RGBELoader":"cfP3d","./utils/ScrollModule":"gBv8W","@tweenjs/tween.js":"7DfAI","./utils/FlowControl":"lGbfQ","./Model/Scene/LightSource":"k3RBY","a2acd0dc482a9f8b":"c9M7X","7e837f2749c36727":"abAUt","5575bf68e8d133aa":"drHEF","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"ktPTu":[function(require,module,exports) {
+},{"three":"ktPTu","three/examples/jsm/loaders/GLTFLoader":"dVRsF","three/examples/jsm/controls/OrbitControls":"7mqRv","three/examples/jsm/modifiers/CurveModifier":"iSJKe","./Model/Word":"5NsQR","./Model/Scene":"hmvjl","postprocessing":"bM81O","three/examples/jsm/postprocessing/OutputPass":"bggV1","three/examples/jsm/postprocessing/GTAOPass":"dW5AT","three-good-godrays":"j7KiZ","three/examples/jsm/renderers/CSS3DRenderer":"dWhzi","three/examples/jsm/loaders/RGBELoader":"cfP3d","./utils/ScrollModule":"gBv8W","@tweenjs/tween.js":"7DfAI","./utils/FlowControl":"lGbfQ","./Model/Scene/LightSource":"k3RBY","6096ab0b6430b682":"8rTrb","da6fbb63da93c490":"bjK4r","5575bf68e8d133aa":"drHEF","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"ktPTu":[function(require,module,exports) {
 /**
  * @license
  * Copyright 2010-2023 Three.js Authors
@@ -36251,7 +36263,7 @@ const menu = new _datGui.GUI();
 const CAMERA = new (0, _camManagerDefault.default)();
 // SETUP manual props for camera
 // const aspect = window.innerWidth / window.innerHeight;
-CAMERA.initOrtografic({
+CAMERA.initPerspective({
     haveContainer: false
 });
 CAMERA.self.position.set(0, 0, 1); //CAMERA.container.position.set(1.6954439456700483, 1.7312709193709224, 9.399653928403339);
@@ -39039,6 +39051,9 @@ const TIMELINE = new Map([
             }, 0).add({
                 opacity: 1,
                 targets: items.screen
+            }, 0).add({
+                targets: items.flow,
+                opacity: 0
             }, 0);
         }
     ],
@@ -39049,8 +39064,8 @@ const TIMELINE = new Map([
                 duration: timeAnimation,
                 easing: "easeOutSine"
             }).add({
-                targets: items.screen,
-                function: changeUrl(screenFrames.b)
+                targets: items.hmi,
+                opacity: 0
             }, 0);
         }
     ],
@@ -39061,8 +39076,6 @@ const TIMELINE = new Map([
                 duration: timeAnimation,
                 easing: "easeOutSine"
             }).add({
-                targets: items.screen,
-                function: changeUrl(screenFrames.c)
             }, 0);
         }
     ],
@@ -39073,8 +39086,8 @@ const TIMELINE = new Map([
                 duration: timeAnimation,
                 easing: "easeOutSine"
             }).add({
-                targets: items.hmi,
-                opacity: 0
+                targets: items.heavy,
+                opacity: 1
             }, 0).add({
                 targets: items.flow,
                 translateY: "-70%"
@@ -39093,6 +39106,29 @@ const TIMELINE = new Map([
             }).add({
                 targets: items.flow,
                 translateY: "-100%"
+            }, 0).add({
+                targets: items.heavy,
+                opacity: 0,
+                left: "150%"
+            }, 0).add({
+                targets: items.carousel,
+                opacity: 1,
+                backgroundColor: "#000"
+            }, 0);
+        }
+    ],
+    [
+        10,
+        ()=>{
+            (0, _animeEsJsDefault.default).timeline({
+                duration: timeAnimation,
+                easing: "easeOutSine"
+            }).add({
+                targets: items.carousel,
+                opacity: 0
+            }, 0).add({
+                targets: items.industry,
+                opacity: 1
             }, 0);
         }
     ],
@@ -39103,50 +39139,7 @@ const TIMELINE = new Map([
                 duration: timeAnimation,
                 easing: "easeOutSine"
             }).add({
-                targets: items.heavy,
-                opacity: 1,
-                left: "5%"
-            }, 0);
-        }
-    ],
-    [
-        12,
-        ()=>{
-            (0, _animeEsJsDefault.default).timeline({
-                duration: timeAnimation,
-                easing: "easeOutSine"
-            }).add({
-                targets: items.heavy,
-                opacity: 0,
-                left: "-20%"
-            }, 0).add({
-                targets: items.carousel,
-                opacity: 1
-            }, 0);
-        }
-    ],
-    [
-        13,
-        ()=>{
-            (0, _animeEsJsDefault.default).timeline({
-                duration: timeAnimation,
-                easing: "easeOutSine"
-            }).add({
-                targets: items.carousel,
-                opacity: 0
-            }, 0).add({
-                targets: items.industry,
-                opacity: 1
-            }, 0);
-        }
-    ],
-    [
-        14,
-        ()=>{
-            (0, _animeEsJsDefault.default).timeline({
-                duration: timeAnimation,
-                easing: "easeOutSine"
-            }).add({
+                //ocultar otro
                 targets: items.industry,
                 opacity: 0
             }, 0).add({
@@ -39156,7 +39149,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        15,
+        12,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -39173,7 +39166,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        16,
+        13,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -39192,7 +39185,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        17,
+        14,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -62424,13 +62417,13 @@ class LightSource extends (0, _three.Mesh) {
 },{"three":"ktPTu","../shaders/noise.glsl":"36jEY","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"36jEY":[function(require,module,exports) {
 module.exports = "#define GLSLIFY 1\n//	Simplex 3D Noise \n//	by Ian McEwan, Ashima Arts\n//\nvec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}\nvec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}\n\nfloat snoise(vec3 v){ \n  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;\n  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);\n\n// First corner\n  vec3 i  = floor(v + dot(v, C.yyy) );\n  vec3 x0 =   v - i + dot(i, C.xxx) ;\n\n// Other corners\n  vec3 g = step(x0.yzx, x0.xyz);\n  vec3 l = 1.0 - g;\n  vec3 i1 = min( g.xyz, l.zxy );\n  vec3 i2 = max( g.xyz, l.zxy );\n\n  //  x0 = x0 - 0. + 0.0 * C \n  vec3 x1 = x0 - i1 + 1.0 * C.xxx;\n  vec3 x2 = x0 - i2 + 2.0 * C.xxx;\n  vec3 x3 = x0 - 1. + 3.0 * C.xxx;\n\n// Permutations\n  i = mod(i, 289.0 ); \n  vec4 p = permute( permute( permute( \n             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))\n           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) \n           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));\n\n// Gradients\n// ( N*N points uniformly over a square, mapped onto an octahedron.)\n  float n_ = 1.0/7.0; // N=7\n  vec3  ns = n_ * D.wyz - D.xzx;\n\n  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)\n\n  vec4 x_ = floor(j * ns.z);\n  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)\n\n  vec4 x = x_ *ns.x + ns.yyyy;\n  vec4 y = y_ *ns.x + ns.yyyy;\n  vec4 h = 1.0 - abs(x) - abs(y);\n\n  vec4 b0 = vec4( x.xy, y.xy );\n  vec4 b1 = vec4( x.zw, y.zw );\n\n  vec4 s0 = floor(b0)*2.0 + 1.0;\n  vec4 s1 = floor(b1)*2.0 + 1.0;\n  vec4 sh = -step(h, vec4(0.0));\n\n  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;\n  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;\n\n  vec3 p0 = vec3(a0.xy,h.x);\n  vec3 p1 = vec3(a0.zw,h.y);\n  vec3 p2 = vec3(a1.xy,h.z);\n  vec3 p3 = vec3(a1.zw,h.w);\n\n//Normalise gradients\n  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));\n  p0 *= norm.x;\n  p1 *= norm.y;\n  p2 *= norm.z;\n  p3 *= norm.w;\n\n// Mix final noise value\n  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);\n  m = m * m;\n  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), \n                                dot(p2,x2), dot(p3,x3) ) );\n}";
 
-},{}],"c9M7X":[function(require,module,exports) {
-module.exports = require("9ec3dfef8606e36c").getBundleURL("hcaXs") + "studio.a5ed1e45.hdr" + "?" + Date.now();
+},{}],"8rTrb":[function(require,module,exports) {
+module.exports = require("16a61e2acc206410").getBundleURL("hcaXs") + "warehouse.ca5df303.hdr" + "?" + Date.now();
 
-},{"9ec3dfef8606e36c":"j9GCc"}],"abAUt":[function(require,module,exports) {
-module.exports = require("bebc2176e0bc2603").getBundleURL("hcaXs") + "mainScene.e2799a16.glb" + "?" + Date.now();
+},{"16a61e2acc206410":"j9GCc"}],"bjK4r":[function(require,module,exports) {
+module.exports = require("b13b1840f519e79e").getBundleURL("hcaXs") + "modelScene.d1779e99.glb" + "?" + Date.now();
 
-},{"bebc2176e0bc2603":"j9GCc"}],"drHEF":[function(require,module,exports) {
+},{"b13b1840f519e79e":"j9GCc"}],"drHEF":[function(require,module,exports) {
 module.exports = require("989e72efad70c9c5").getBundleURL("hcaXs") + "point.d05d7333.png" + "?" + Date.now();
 
 },{"989e72efad70c9c5":"j9GCc"}]},["fbff6","ait1o"], "ait1o", "parcelRequire94c2")

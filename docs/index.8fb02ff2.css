@@ -1,6 +1,6 @@
 :root {
   --layer-main-position: 0;
-  --layer-back-position: -10;
+  --layer-back-position: 10;
   --layer-front-position: 10;
   --biggest-text: 22rem;
   --biggest-text-b: 12rem;
@@ -223,7 +223,7 @@ body {
   font-size: var(--big-text);
   opacity: 0;
   top: 65%;
-  right: -10%;
+  left: 5%;
 }
 
 #screen-container {
