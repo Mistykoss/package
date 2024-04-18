@@ -1,110 +1,112 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
-  <link rel="stylesheet" href="/index.bc7a2d6f.css">
-
-  <title>Incubella</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="index.8fb02ff2.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+    <title>Scene</title>
 </head>
-
 <body>
-  <header class="navbar">
-    <div id="back-btn" class="navbar__back-btn deactive"></div>
-    <a href="#" id="navbar" class="navbar__logo deactive"></a>
-    <button id="sound-btn-bar" class="footer__action-btn footer--sound-btn deactive"></button>
-  </header>
-  <div id="footer" class="footer deactive">
-    <button id="credit-btn" class="footer__action-btn footer--hide-footer-btn"></button>
-    <div id="navigation-menu" class="deactive"></div>
-    <span id="span-footer-text" class="footer__text">Communities power the world <br> we empower communities</span>
-    <button id="sound-btn" class="footer__action-btn footer--sound-btn"></button>
-  </div>
-  <div id="root" class="root">
-    <section id="first-screen" class="first-screen deactive">
-      <div class="first-screen__intro-container">
-        <div class="intro-container__title">
-          <h1 id="main-title">
-            The Web3
-            Community<br>Platform
-          </h1>
-        </div>
-        <div class="intro-container__sub-title">
-          <h2>
-            Discover token-gated communities from your favourite creators
-            around the world.
-          </h2>
-        </div>
-        <div id="control-panel" class="intro-container__control-panel">
-          <button id="features-btn" class="control-panel__intro-btn control-panel__intro-btn--features-btn">
-            <span class="intro-btn__text">Dive</span>
-            <div class="intro-btn__icon"></div>
-          </button>
-          <button id="launch-app-btn" class="control-panel__intro-btn control-panel__intro-btn--launch-app-btn">
-            <span class="intro-btn__text">Launch</span>
-            <div class="intro-btn__icon"></div>
-          </button>
-        </div>
-      </div>
+    <header class="nav-bar">
+        <div id="side-menu" class="nav-bar__side-item nav-bar__side-menu"></div>
+        <div class="nav-bar__logo"></div>
+        <div class="nav-bar__side-item nav-bar__shop"></div>
+    </header>
+    <section id="cortain" class="cortain">
+        <div class="cortain__sheet cortain__top"></div>
+        <div class="cortain__sheet cortain__bottom"></div>
     </section>
-    <section id="load-screen" class="load-screen">
-      <div class="load-screen__logo navbar__logo"></div>
-      <div id="no-audio-btn" class="load-screen__span">
-        CONTINUE WITHOUT AUDIO
-      </div>
+    <section id="front-text-container" class=" front-container full-screen-container">
+        <div><p class="anim-item front-container__description-pack" data-name="pack">PACKAGING AND<br> AUTOMATION SOLUTIONS<br> FOR YOUR INDUSTRY</p></div>
+        <div><p class="anim-item shadow-text front-container__span-athenas3" data-name="s3">ATHENA S3</p></div>
+        <div><p class="anim-item shadow-text front-container__span-athenas3-b" data-name="s3">ATHENA S3</p></div>
+        <div><span class="anim-item front-container__span-fp-version" data-name="fp-version">FP Version</span></div>
+        <div><span class="anim-item front-container__span-fs-version" data-name="fs-version">FS Vesion</span></div>
+        <div><span class="anim-item front-container__span-hmi" data-name="hdmi">INTUITIVE<br> HMI DESIGN</span></div>
+        <div class="industry">
+            <span class="industry__title">Industry<br> Patners</span>
+            <div id="industry-corousel" class="industry-corousel">
 
-      <div class="action-container">
-        <button id="start-btn" class="action-container__start-btn">
-          <div class="start-btn__text">BEGIN</div>
-          <div class="start-btn__icon"></div>
-        </button>
-      </div>
-    </section>
-    <section id="credit" class="credit deactive">
-      <div class="credit__item credit__text">
-        <span class="text__span">Munity is for: </span>
-        <p id="typed" class="credit__description"></p>
-      </div>
-      <div class="credit__item credit__more-info">
-        <div class="more-info__policy"><a href="#">Privacy Policy</a></div>
-        <div class="more-info__terms"><a href="#">Terms of service</a></div>
-      </div>
-      <div class="credit__item credit__text" style="text-align: center">
-        <span class="text__span">COPYRIGHT</span>
-        <p class="credit__info">© 2023 INCUBELLA. All Rights Reserved.</p>
-        <p class="credit__info"> <br>Create an authentic relationship with your community
-          <br>Empower yourself as a CREATOR
-          <br> Develop a new revenue stream
-        </p>
-      </div>
-
-      <div id="credit__back-btn" class="credit__item credit__back-btn"></div>
-      <div class="credit__footer">
-        <div class="footer__social">
-          <div class="social__icon-link">
-            <a href="https://www.instagram.com/munity.ai?igsh=MWVoZWlvZnppa3gybA==" target="_blank" class="icon-link__item icon-link__instagram"></a>
-            <a href="#" target="_blank" class="icon-link__item icon-link__discord"></a>
-            <a href="https://x.com/munityai?s=21&t=pauhjge2tBk84v10aw7liA" target="_blank" class="icon-link__item icon-link__twitter"></a>
-          </div>
+            </div>
         </div>
-      </div>
-      <div class="credit__logo navbar__logo "></div>
-    </section>
-  </div>
-  <div id="cortain">
-    <div class="cortain cortain__top"></div>
-    <div class="cortain cortain__bottom"></div>
-  </div>
-  <!--
-  <div id="main-span">
-    <img src="./app/experience/img/logo.png" alt="Munity">
-  </div>
--->
+        <div class="proudly">
+            <span class="proudly__title">Proudly Providing<br> Solutions For</span>
+            <div id="proudly-corousel" class="proudly-corousel">
 
-  <!-- Initialize Swiper -->
-  <script src="/index.4029fab8.js" defer=""></script>
+            </div>
+        </div>
+    </section>
+
+    <section id="back-text-container" class=" back-container full-screen-container">
+        <div><p class="anim-item back-container__description-food">FOOD<br> PACKAGING &<br> AUTOMATION <br>SOLUTIONS</p></div>
+        <div><p class="anim-item back-container__description-flow outline-text">ATHENA-S3<br> HORIZONTAL FLOW <br>WRAPPER <br>STANDARD <br>FEATURES</p></div>
+        <div><p class="anim-item back-container__heavy">Heavy duty<br>extruded and <br>adjustable legs</p></div>
+        <div><img class="anim-item back-container__logo" src="logo.0a4716b0.png" alt="Logo Packaging Make Easy"></div>
+    </section>
+
+    <section id="articles" class="articles center-absolute">
+        <div class="articles__header">
+            <div class="header__title">Latest Articles</div>
+            <div class="header__more-btn">View More Articles</div>
+        </div>
+        <div class="articles__main-article">
+            <div class="main-article__img">
+                <img src="main-a.b0d6a7ca.png" alt="Article">
+            </div>
+            <div class="main-article__footer">
+                <div class="footer__date">December 31 - 2023</div>
+                <div class="footer__span">Elevating Your Packaging: Quality Materials, Directly from the Source</div>
+            </div>
+        </div>
+        <div class="articles__wrapper">
+            <div class="wrapper__list-article">
+                <div class="list-article__title">Elevating Your Packaging: Quality Materials, Directly from the Source</div>
+                <div class="list-article__span">December 31 - 2023 </div>
+                <div class="list-article__description">As the world of packaging continues to evolve, one sector that stands out for its innovation and growth potential is bakery packaging. With the bakery industry experiencing a surge in demand and competition, packaging professionals are compelled to rethink their strategies and embrace automation to boost efficiency and stay ahead in the game.</div>
+                <div class="list-article__preview">
+                    <img src="item-a.2f1ef84c.png" alt="">
+                </div>
+
+            </div>
+            <div class="wrapper__list-article">
+                <div class="list-article__title">Unveiling the Packaging Pizzazz</div>
+                <div class="list-article__span">December 31 - 2023</div>
+                <div class="list-article__description">Hey there, packaging aficionados! Today, I'm here to dish out some delicious insights into the world of food processing and the jaw-dropping role that packaging machinery, particularly from Packaging Made Easy, plays in the culinary circus. So, buckle up your taste buds, and let's embark on this flavorful journey!</div>
+                <div class="list-article__preview">
+                    <img src="item-b.b89092fe.png" alt="">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact-us" class="contact-us center-absolute"> 
+        <div class="contact-us__title">LET'S TALK <br>NOW</div>
+        <div class="contact-us__quote-btn">DO YOU WANT A QUOTE?</div>
+    </section>
+
+    <footer id="footer" class="center-absolute footer-main">
+        <div class="footer-container">
+            <div class="footer-container__logo"></div>
+            <ul class="footer-container__links">
+                <li class="links__item"><a href="">SHOP</a></li>
+                <li class="links__item"><a href="">MATERIALS</a></li>
+                <li class="links__item"><a href="">FILM</a></li>
+                <li class="links__item"><a href="">ABOUT US</a></li>
+                <li class="links__item"><a href="">AUTOMATION</a></li>
+                <li class="links__item"><a href="">CONTACT US</a></li>
+                <li class="links__item"><a href="">BLOG</a></li>
+                <li class="links__item"><a href="">SHIPPINH & RETURNS</a></li>
+            </ul>
+            <div class="footer-container__credits">© PACKAGING MADE EASY - All Rigts Reserved. by marcelodesignx</div>
+            <div class="footer-container__card-preview"></div>
+        </div>
+    </footer>
+
+    <div id="idle-video-container">
+        <video id="idle-video" src="idle.99d6d933.mp4" autoplay="" preload="auto" loop="" muted=""></video>
+    </div>
+    <script src="index.5d3903fb.js" defer=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
 </body>
-
 </html>
