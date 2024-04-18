@@ -598,7 +598,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 rendererHtmlFront.setSize(window.innerWidth, window.innerHeight);
 //max quality
-renderer.setClearColor(0xffffff, 0);
+//renderer.setClearColor(0x000, 0);
 renderer.outputColorSpace = _three.SRGBColorSpace;
 renderer.toneMapping = _three.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.5;
@@ -619,13 +619,14 @@ const hdrPath = new URL(require("6096ab0b6430b682"));
 //SETUP MODEL
 let CTRL_ANIMATION;
 const loader = new (0, _gltfloader.GLTFLoader)();
-const url = new URL(require("da6fbb63da93c490"));
+const url = new URL(require("3cc4396a2b91a028"));
 let mixer = null;
 // Cargar la textura HDR
 hdrLoader.load(hdrPath, (hdrTexture)=>{
     // Generar el mapa de entorno prefiltrado
     hdrTexture.mapping = _three.EquirectangularReflectionMapping;
     scene.environment = hdrTexture;
+//scene.background = hdrTexture;
 //scene.backgroundIntensity = 0.65;
 //scene.backgroundBlurriness = 0.35;
 });
@@ -636,7 +637,7 @@ loader.load(url.href, (gltf)=>{
     model.mixer = new _three.AnimationMixer(model);
     model.camera = model.getObjectByName("Camera");
     console.log(model.camera);
-    model.target = model.getObjectByName("target");
+    //model.target = model.getObjectByName("target");
     //model.camView = model.getObjectByName("camView");
     model.pageIndex = model.getObjectByName("pageIndex");
     //model.screenPivot = model.getObjectByName("screenPivot");
@@ -672,15 +673,27 @@ loader.load(url.href, (gltf)=>{
     //model.camera.right = cam.right; // Extremo derecho de la vista desde la cámara
     //model.camera.zoom = cam.zoom; // Factor de zoom de la cámara
     model.camera.aspect = cam.aspect;
+    //model.camera.fov = cam.fov;
     model.camera.updateProjectionMatrix();
     //RECORRER EL MESH Y APLICAR ESTILO
     const mainModel = model;
     mainModel.traverse((mesh)=>{
+        const anisotropy = renderer.capabilities.getMaxAnisotropy();
         if (mesh.isMesh) {
-            // Llamar a la función para ajustar el material del Mesh
-            mesh.material.metalness = 1;
-            mesh.material.roughness = 0.5;
-            mesh.material.envMapIntensity = 0.25; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
+            if (mesh.name === "floor") {
+                console.log("piso");
+                mesh.material.envMapIntensity = .35; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
+            } else {
+                // Llamar a la función para ajustar el material del Mesh
+                mesh.material.metalness = 1;
+                mesh.material.roughness = 0.5;
+                mesh.material.envMapIntensity = 0.25; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
+            }
+            if (mesh.isMesh === true && mesh.material.map !== null) {
+                mesh.material.map.anisotropy = anisotropy;
+                mesh.material.map.minFilter = _three.LinearFilter;
+                mesh.material.map.magFilter = _three.LinearFilter;
+            }
         }
     });
     //END
@@ -712,8 +725,8 @@ for(let i = 0; i < 15; i++){
     const light = new _three.PointLight(0xffffff, 2); // Color blanco (0xffffff), intensidad 5, distancia 300
     lights.push(light); // Agregar la luz al array
     const lightHelper = new _three.PointLightHelper(light, 0.35); // El segundo parámetro es el tamaño del helper
-    //scene.add(lightHelper);
-    scene.add(light);
+//scene.add(lightHelper);
+//scene.add(light);
 }
 // Ahora lights contiene una lista de 5 luces PointLight con intensidad 5 y distancia 300
 // Crear una luz de tipo "point" (punto)
@@ -880,6 +893,7 @@ const cube = new _three.Mesh(new _three.BoxGeometry(1, 1, 1), new _three.MeshNor
 cube.castShadow = true;
 cube.receiveShadow = true;
 cube.position.set(3, 4, 5);
+const tempClock = new _three.Clock();
 //#region  ANIMATION LOOP
 const animate = ()=>{
     //if(isVideoPlaying) return;
@@ -988,15 +1002,19 @@ const animate = ()=>{
             animModel(currentTime);
             (0, _scene.FRAME)(actualPage);
         }
+        //const anim = tempClock.getElapsedTime();
+        //
+        //console.log(anim)
+        //mixer.updateAnimations(anim)
         if ((0, _flowControl.COUNT) >= 5) {
-            if (actualPage === 15) return;
+            if (actualPage > 11) return;
             if (!isAnimSetup) {
                 clock.start();
                 isAnimSetup = true;
                 console.log("INICIAR");
             } else {
-                currentTime = currentTime + clock.getElapsedTime() * 0.01;
-                //console.log(currentTime ,"DFGHJKL:")
+                currentTime = currentTime + clock.getElapsedTime() * 0.005;
+                // console.log(currentTime ,"DFGHJKL:")
                 animModel(currentTime);
                 if (actualPage === actualIndex) {
                     (0, _scene.FRAME)(actualPage);
@@ -1223,7 +1241,7 @@ function getScreen() {
     return SCREEN_REF;
 }
 
-},{"three":"ktPTu","three/examples/jsm/loaders/GLTFLoader":"dVRsF","three/examples/jsm/controls/OrbitControls":"7mqRv","three/examples/jsm/modifiers/CurveModifier":"iSJKe","./Model/Word":"5NsQR","./Model/Scene":"hmvjl","postprocessing":"bM81O","three/examples/jsm/postprocessing/OutputPass":"bggV1","three/examples/jsm/postprocessing/GTAOPass":"dW5AT","three-good-godrays":"j7KiZ","three/examples/jsm/renderers/CSS3DRenderer":"dWhzi","three/examples/jsm/loaders/RGBELoader":"cfP3d","./utils/ScrollModule":"gBv8W","@tweenjs/tween.js":"7DfAI","./utils/FlowControl":"lGbfQ","./Model/Scene/LightSource":"k3RBY","6096ab0b6430b682":"8rTrb","da6fbb63da93c490":"bjK4r","5575bf68e8d133aa":"drHEF","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg"}],"ktPTu":[function(require,module,exports) {
+},{"three":"ktPTu","three/examples/jsm/loaders/GLTFLoader":"dVRsF","three/examples/jsm/controls/OrbitControls":"7mqRv","three/examples/jsm/modifiers/CurveModifier":"iSJKe","./Model/Word":"5NsQR","./Model/Scene":"hmvjl","postprocessing":"bM81O","three/examples/jsm/postprocessing/OutputPass":"bggV1","three/examples/jsm/postprocessing/GTAOPass":"dW5AT","three-good-godrays":"j7KiZ","three/examples/jsm/renderers/CSS3DRenderer":"dWhzi","three/examples/jsm/loaders/RGBELoader":"cfP3d","./utils/ScrollModule":"gBv8W","@tweenjs/tween.js":"7DfAI","./utils/FlowControl":"lGbfQ","./Model/Scene/LightSource":"k3RBY","6096ab0b6430b682":"8rTrb","5575bf68e8d133aa":"drHEF","@parcel/transformer-js/src/esmodule-helpers.js":"3EGmg","3cc4396a2b91a028":"fxyxH"}],"ktPTu":[function(require,module,exports) {
 /**
  * @license
  * Copyright 2010-2023 Three.js Authors
@@ -38568,9 +38586,9 @@ class CamManager {
     #cam;
     #container = new (0, _three.Group)();
     #propsPerspective = {
-        fov: 75,
+        fov: 65,
         aspect: window.innerWidth / window.innerHeight,
-        near: 0.1,
+        near: 0.01,
         far: 1000
     };
     #propsOrtografic = {
@@ -39066,26 +39084,7 @@ const TIMELINE = new Map([
             }).add({
                 targets: items.hmi,
                 opacity: 0
-            }, 0);
-        }
-    ],
-    [
-        7,
-        ()=>{
-            (0, _animeEsJsDefault.default).timeline({
-                duration: timeAnimation,
-                easing: "easeOutSine"
-            }).add({
-            }, 0);
-        }
-    ],
-    [
-        8,
-        ()=>{
-            (0, _animeEsJsDefault.default).timeline({
-                duration: timeAnimation,
-                easing: "easeOutSine"
-            }).add({
+            }, 0).add({
                 targets: items.heavy,
                 opacity: 1
             }, 0).add({
@@ -39098,7 +39097,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        9,
+        7,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -39112,13 +39111,12 @@ const TIMELINE = new Map([
                 left: "150%"
             }, 0).add({
                 targets: items.carousel,
-                opacity: 1,
-                backgroundColor: "rgba(0, 0, 0, 0.5);"
+                opacity: 1
             }, 0);
         }
     ],
     [
-        10,
+        8,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -39133,7 +39131,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        11,
+        9,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -39149,7 +39147,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        12,
+        10,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -39166,7 +39164,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        13,
+        11,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -39185,7 +39183,7 @@ const TIMELINE = new Map([
         }
     ],
     [
-        14,
+        12,
         ()=>{
             (0, _animeEsJsDefault.default).timeline({
                 duration: timeAnimation,
@@ -62420,12 +62418,12 @@ module.exports = "#define GLSLIFY 1\n//	Simplex 3D Noise \n//	by Ian McEwan, Ash
 },{}],"8rTrb":[function(require,module,exports) {
 module.exports = require("16a61e2acc206410").getBundleURL("hcaXs") + "warehouse.ca5df303.hdr" + "?" + Date.now();
 
-},{"16a61e2acc206410":"j9GCc"}],"bjK4r":[function(require,module,exports) {
-module.exports = require("b13b1840f519e79e").getBundleURL("hcaXs") + "modelScene.d1779e99.glb" + "?" + Date.now();
-
-},{"b13b1840f519e79e":"j9GCc"}],"drHEF":[function(require,module,exports) {
+},{"16a61e2acc206410":"j9GCc"}],"drHEF":[function(require,module,exports) {
 module.exports = require("989e72efad70c9c5").getBundleURL("hcaXs") + "point.d05d7333.png" + "?" + Date.now();
 
-},{"989e72efad70c9c5":"j9GCc"}]},["fbff6","ait1o"], "ait1o", "parcelRequire94c2")
+},{"989e72efad70c9c5":"j9GCc"}],"fxyxH":[function(require,module,exports) {
+module.exports = require("cfe5d8d3936ab7ab").getBundleURL("hcaXs") + "newScene.b81e0cf5.glb" + "?" + Date.now();
+
+},{"cfe5d8d3936ab7ab":"j9GCc"}]},["fbff6","ait1o"], "ait1o", "parcelRequire94c2")
 
 //# sourceMappingURL=index.5d3903fb.js.map
