@@ -641,11 +641,20 @@ loader.load(url.href, (gltf)=>{
     //model.camView = model.getObjectByName("camView");
     model.pageIndex = model.getObjectByName("pageIndex");
     //model.screenPivot = model.getObjectByName("screenPivot");
-    model.escudo = model.getObjectByName("escudo");
-    model.escudo.visible = false;
-    model.escudo = model.getObjectByName("escudo_copy");
-    model.escudo.visible = false;
+    console.log(model);
     mixer = model.mixer;
+    //shelfs
+    mixer.fsVersion = model.getObjectByName("fsVersion");
+    mixer.fpVersion = model.getObjectByName("fpVersion");
+    mixer.fsVersion.visible = false;
+    mixer.fpVersion.visible = false;
+    //machines
+    //mixer.athenaFs = model.getObjectByName("athena_fp");
+    //mixer.athenaFp = model.getObjectByName("athena_fs");
+    //mixer.athenaFs.material.transparent = true;
+    //mixer.athenaFp.material.transparent = true;
+    console.log(mixer.center);
+    mixer.center = model.getObjectByName("center");
     //mixer.screenPivot = model.screenPivot;
     //mixer.screenPivot.visible = false;
     //mixer.screenPivot = model.screenPivot.position;
@@ -660,8 +669,8 @@ loader.load(url.href, (gltf)=>{
     mixer.animations = [];
     mixer.childs = model.children;
     mixer.models = [];
-    mixer.models.push(model.getObjectByName("escudo"));
-    mixer.models.push(model.getObjectByName("escudo_copy"));
+    mixer.models.push(mixer.fsVersion);
+    mixer.models.push(mixer.fpVersion);
     mixer.cameraContianer = new (0, _tweenJs.Group)();
     //mixer.cameraContianer.add(mixer.camera);
     const cam = (0, _word.CAMERA).getCamera();
@@ -679,21 +688,21 @@ loader.load(url.href, (gltf)=>{
     const mainModel = model;
     mainModel.traverse((mesh)=>{
         const anisotropy = renderer.capabilities.getMaxAnisotropy();
-        if (mesh.isMesh) {
-            if (mesh.name === "floor") {
-                console.log("piso");
-                mesh.material.envMapIntensity = .35; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
-            } else {
-                // Llamar a la función para ajustar el material del Mesh
-                mesh.material.metalness = 1;
-                mesh.material.roughness = 0.5;
-                mesh.material.envMapIntensity = 0.25; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
-            }
-            if (mesh.isMesh === true && mesh.material.map !== null) {
-                mesh.material.map.anisotropy = anisotropy;
-                mesh.material.map.minFilter = _three.LinearFilter;
-                mesh.material.map.magFilter = _three.LinearFilter;
-            }
+        if (mesh.isMesh === true) {
+            //mesh.castShadow = true;
+            //mesh.receiveShadow = true;
+            mesh.material.envMapIntensity = 0.7; // Ajustar la intensidad del envMap (0.5 representa la mitad de la intensidad)
+            //mesh.material.roughness = 0.1;
+            //mesh.material.metalness = 1;
+            //mesh.material.map.anisotropy = anisotropy;
+            //mesh.material.map.minFilter = THREE.LinearFilter;
+            //mesh.material.map.magFilter = THREE.LinearFilter;
+            mesh.material.needsUpdated = true;
+        }
+        if (mesh.name === "sombra_a" || mesh.name === "sombra_b") {
+            mesh.castShadow = false;
+            mesh.receiveShadow = false;
+            mesh.renderOrder = 1;
         }
     });
     //END
@@ -728,54 +737,23 @@ for(let i = 0; i < 15; i++){
 //scene.add(lightHelper);
 //scene.add(light);
 }
-// Ahora lights contiene una lista de 5 luces PointLight con intensidad 5 y distancia 300
+//#region MAIN LIGHT
+// Creamos una luz focal (spotlight)
+const mainSpotLight = new _three.PointLight(0xffffff, 50);
+mainSpotLight.position.set(0, 1, 0);
+mainSpotLight.castShadow = true; // Activamos las sombras
+mainSpotLight.receiveShadow = true;
+mainSpotLight.shadow.mapSize.width = 1024;
+mainSpotLight.shadow.mapSize.height = 1024;
+//mainSpotLight.shadow.camera.near = 0.5;
+//mainSpotLight.shadow.camera.far = 500;
+//mainSpotLight.shadow.camera.fov = 30;
+//scene.add(mainSpotLight);
 // Crear una luz de tipo "point" (punto)
 const mouseLight = new _three.PointLight(0xfaffd3, 0.3); // Color amarillo (0xffff00), intensidad 1, distancia 100
 mouseLight.position.set(0, 0, 0); // Posición de la luz en el centro de la escena
-scene.add(mouseLight);
-//GOD RAYS LITS
-// Crear una luz direccional
-const directionalLight = new _three.DirectionalLight(0xffffff, 20);
-directionalLight.position.set(-10, 5, -4); // Establecer la posición de la luz si es necesario
-directionalLight.shadow.mapSize.width = 1024;
-directionalLight.shadow.mapSize.height = 1024;
-directionalLight.shadow.camera.near = 0.1;
-directionalLight.shadow.camera.far = 500;
-directionalLight.shadow.bias = 0.001;
-directionalLight.castShadow = true;
-directionalLight.receiveShadow = true;
-directionalLight.shadow.autoUpdate = true;
-//set area
-const areaLargo = 5;
-const area = 3;
-//directionalLight.shadow.camera.right = areaLargo;
-//directionalLight.shadow.camera.left = -areaLargo;
-//directionalLight.shadow.camera.top = area;
-//directionalLight.shadow.camera.bottom = -area;
-//
-//directionalLight.target.position.set(0, 0, 3)
-//directionalLight.target.updateMatrixWorld();
-//
-//scene.add(directionalLight.target);
-directionalLight.shadow.camera.updateProjectionMatrix();
-const dirLightCameraHelper = new _three.CameraHelper(directionalLight.shadow.camera);
-//scene.add(dirLightCameraHelper);
-//scene.add(directionalLight);
-const hemisphereLight = new _three.HemisphereLight(0xffffee, 0x202020, 1);
-//scene.add(hemisphereLight);
-// Crear helper para la luz hemisférica
-const hemisphereLightHelper = new _three.HemisphereLightHelper(hemisphereLight, 1); // El segundo parámetro es el tamaño del helper
-//scene.add(hemisphereLightHelper);
-// Crear un ayudante de luz direccional para visualizar la luz
-const lightHelper = new _three.PointLightHelper(directionalLight, 0.2); // El segundo parámetro es el tamaño del helper
-//scene.add(lightHelper);
-// Crear una esfera
-const geometry = new _three.SphereGeometry(1, 32, 32); // Radio, segmentos en ancho, segmentos en altura
-const material = new _three.MeshStandardMaterial({
-    color: 0xffffff
-}); // Color blanco para la esfera
-const sphere = new _three.Mesh(geometry, material);
-//scene.add(sphere);
+//scene.add(mouseLight);
+//#endregion
 //PARTICULAS
 // Shader para el material de las partículas
 const vertexShader = `
@@ -845,6 +823,7 @@ const pMaterial = new _three.ShaderMaterial({
 const particleSystem = new _three.Points(pGeometry, pMaterial);
 ///scene.add(particleSystem);
 //END PARTICULAS
+let mSpotLightNewPos;
 let wasBegin = false;
 let isCurrentAnimCompleted = false;
 let isBeginAnimationCompleted = false;
@@ -902,8 +881,12 @@ const animate = ()=>{
     //el modelo esta cargado?
     if (mixer !== null) {
         if (!postIsLoaded) {
+            MACHINE_VERSION_ANIM = {
+                fsVersion: anim(1000, 1, 0.3, mixer.athenaFs, "opacity"),
+                fpVersion: anim(1000, 1, 0.3, mixer.athenaFp, "opacity")
+            };
             console.log("POST PROCESADO CARGADO");
-            console.log("camara cargada", mixer.camera);
+            //  console.log("camara cargada", mixer.camera);
             renderPass = new (0, _postprocessing.RenderPass)(scene, mixer.camera);
             renderPass.renderToScreen = false;
             gtoPass = new (0, _gtaopass.GTAOPass)(scene, mixer.camera, window.innerWidth, window.innerHeight);
@@ -917,81 +900,8 @@ const animate = ()=>{
             //composer.addPass(gtoPass);
             //composer.addPass(outputPass);
             // Default values are shown.  You can supply a sparse object or `undefined`.
-            const currentPosition = directionalLight.position;
-            const params = {
-                density: 0.006,
-                maxDensity: 2 / 3,
-                distanceAttenuation: 2,
-                color: new _three.Color(0xffffff).getHex(),
-                edgeStrength: 2,
-                edgeRadius: 2,
-                raymarchSteps: 60,
-                enableBlur: true,
-                blurVariance: 0.1,
-                blur: true,
-                blurKernelSize: (0, _postprocessing.KernelSize).SMALL,
-                gammaCorrection: true,
-                positionX: currentPosition.x,
-                positionY: currentPosition.y,
-                positionZ: currentPosition.z
-            };
-            const godraysPass = new (0, _threeGoodGodrays.GodraysPass)(directionalLight, mixer.camera, params);
-            // If this is the last pass in your pipeline, set `renderToScreen` to `true`
-            godraysPass.renderToScreen = true;
-            //composer.addPass(godraysPass);
-            //setup one time
+            mSpotLightNewPos = mixer.center;
             postIsLoaded = true;
-            const onParamChange = (key, value)=>{
-                params[key] = value;
-                godraysPass.setParams({
-                    ...params,
-                    color: new _three.Color(params.color),
-                    blur: params.enableBlur ? {
-                        variance: params.blurVariance,
-                        kernelSize: params.blurKernelSize
-                    } : false
-                });
-            };
-            (0, _word.menu).add(params, "maxDensity", 0, 1).onChange(function(value) {
-                onParamChange("maxDensity", value);
-            });
-            (0, _word.menu).add(params, "distanceAttenuation", 0, 5).onChange(function(value) {
-                onParamChange("distanceAttenuation", value);
-            });
-            (0, _word.menu).addColor(params, "color").onChange(function(value) {
-                onParamChange("color", value);
-            });
-            (0, _word.menu).add(params, "edgeStrength", 0, 10, 1).onChange(function(value) {
-                onParamChange("edgeStrength", value);
-            });
-            (0, _word.menu).add(params, "edgeRadius", 0, 10, 1).onChange(function(value) {
-                onParamChange("edgeRadius", value);
-            });
-            (0, _word.menu).add(params, "raymarchSteps", 1, 200, 1).onChange(function(value) {
-                onParamChange("raymarchSteps", value);
-            });
-            (0, _word.menu).add(params, "blur", true).onChange(function(value) {
-                onParamChange("blur", value);
-            });
-            (0, _word.menu).add(params, "positionX", -100, 100).step(0.01).onChange(function(value) {
-                directionalLight.position.x = value;
-            });
-            (0, _word.menu).add(params, "positionY", -100, 100).step(0.01).onChange(function(value) {
-                directionalLight.position.y = value;
-            });
-            (0, _word.menu).add(params, "positionZ", -100, 100).step(0.01).onChange(function(value) {
-                directionalLight.position.z = value;
-            });
-            console.log(scene.children);
-            scene.traverse((obj)=>{
-                if (obj instanceof _three.Mesh) {
-                    if (obj.name === "escudo" || obj.name === "escudo_copy") console.log(obj.name);
-                    else {
-                        obj.castShadow = true;
-                        obj.receiveShadow = true;
-                    }
-                }
-            });
         }
         //loadScreen();
         actualPage = mixer.pageIndex.position.x;
@@ -1000,20 +910,23 @@ const animate = ()=>{
         if (!isBeginAnimationCompleted) {
             loadBeginAnimations();
             animModel(currentTime);
-            (0, _scene.FRAME)(actualPage);
+            (0, _scene.FRAME)(1);
         }
         //const anim = tempClock.getElapsedTime();
         //
         //console.log(anim)
         //mixer.updateAnimations(anim)
         if ((0, _flowControl.COUNT) >= 5) {
+            //mover la luz a la posicion del objeto
+            mainSpotLight.position.set(mSpotLightNewPos.x, 3, mSpotLightNewPos.z);
+            //MAIN
             if (actualPage > 11) return;
             if (!isAnimSetup) {
                 clock.start();
                 isAnimSetup = true;
                 console.log("INICIAR");
             } else {
-                currentTime = currentTime + clock.getElapsedTime() * 0.005;
+                currentTime = currentTime + clock.getElapsedTime() * 0.009;
                 // console.log(currentTime ,"DFGHJKL:")
                 animModel(currentTime);
                 if (actualPage === actualIndex) {
@@ -1195,6 +1108,8 @@ function scrolling(event) {
         isScrolling = false;
     }, 1000); // El tiempo
 }
+let wasAnim = false;
+let actualAnim = null;
 function updateRaycaster(event) {
     if (isScrolling) return;
     clearTimeout(timeOut); // Reiniciar el temporizador cada vez que se mueve el mouse
@@ -1227,12 +1142,31 @@ function updateRaycaster(event) {
         // Verificar si se detectó alguna intersección
         if (intersectObjects.length > 0) {
             // Obtener solo la primera intersección
-            const primeraInterseccion = intersectObjects[0].point;
-            //console.log(primeraInterseccion);
-            mousePos.copy(primeraInterseccion);
+            const primeraInterseccion = intersectObjects[0];
+            const itemId = primeraInterseccion.object.name;
+            if (actualAnim !== itemId) {
+                const animacion = MACHINE_VERSION_ANIM[itemId];
+                console.log("Animar", animacion);
+                animacion.start();
+                actualAnim = itemId;
+            }
+            mousePos.copy(primeraInterseccion.point);
         // Hacer lo que necesites con la primera intersección
         }
     }
+}
+//aniatioins function
+function anim(time, start, final, object, literal) {
+    console.log(object);
+    const tween = new (0, _tweenJs.Tween)(object).to({
+        [literal]: final
+    }, time).onUpdate(()=>{
+        console.log("Machine Animation...");
+    // La función onUpdate se llama en cada fotograma de la animación
+    // Aquí puedes actualizar la representación del objeto en la escena, si es necesario
+    });
+    // Puedes encadenar otras funciones de Tween.js aquí, como .onComplete() o .easing()
+    return tween;
 }
 // Escuchar eventos de movimiento del mouse y actualizar el raycaster
 document.addEventListener("mousemove", updateRaycaster, false);
@@ -38952,7 +38886,7 @@ const TIMELINE = new Map([
         1,
         ()=>{
             //esconder los items anteriores
-            const frameA = (0, _animeEsJsDefault.default).timeline({
+            (0, _animeEsJsDefault.default).timeline({
                 easing: "easeOutSine",
                 duration: timeAnimation,
                 delay: 0
@@ -38977,8 +38911,8 @@ const TIMELINE = new Map([
                     items.athena,
                     items.pack
                 ],
-                left: "-45%",
-                opacity: 0
+                opacity: 0,
+                left: "-85%"
             });
             //mostrar lo nuevo
             (0, _animeEsJsDefault.default).timeline({
